@@ -1,0 +1,233 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Authentication & Authorization
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String    // bcrypt hash
+  role          String    @default("USER") // "SUPER_ADMIN" | "ADMIN" | "USER"
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  conversations     Conversation[]
+  snippets         Snippet[]
+  prompts          Prompt[]
+  projects         Project[]
+  passwordResets   PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+  @@index([userId])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Application data (existing)
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id          String   @id @default(cuid())
+  title       String   @default("New conversation")
+  requestType String   @default("generate")
+  techStack   String   @default("")
+  developerLevel String @default("intermediate")
+  pinned      Boolean  @default(false)
+  tags        String   @default("")
+  userId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  messages    Message[]
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("conversations")
+  @@index([userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  requestType    String?
+  prompt         String?
+  code           String?
+  filePath       String?
+  fileType       String?
+  tokenEstimate  Int      @default(0)
+  feedback       String?
+  createdAt      DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+  @@index([conversationId])
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  messageId String
+  helpful   String
+  reason    String?
+  usedCode  Boolean  @default(false)
+  codeWorked Boolean @default(false)
+  improvement String?
+  createdAt DateTime @default(now())
+
+  @@map("feedback")
+  @@index([messageId])
+}
+
+model Snippet {
+  id        String   @id @default(cuid())
+  title     String
+  language  String   @default("typescript")
+  code      String
+  tags      String   @default("")
+  source    String   @default("ai")
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("snippets")
+  @@index([userId])
+}
+
+model Prompt {
+  id        String   @id @default(cuid())
+  title     String
+  prompt    String
+  requestType String  @default("generate")
+  techStack String   @default("")
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("prompts")
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Projects & Development Tools
+// ---------------------------------------------------------------------------
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  description   String   @default("")
+  framework     String   @default("nextjs") // nextjs, react, node, static, etc.
+  status        String   @default("development") // development, changes_detected, github_synced, building, ready, deploying, live, error
+  localPath     String?  // user-provided local folder path (for VS Code deep-link)
+  repoUrl       String?  // GitHub repo URL
+  repoFullName  String?  // owner/repo for GitHub API
+  defaultBranch String   @default("main")
+  lastBuildAt   DateTime?
+  lastDeployUrl String?
+  buildCommand  String   @default("bun run build")
+  outputDir     String   @default(".next")
+  envVars       String   @default("") // JSON string of env var keys (values stored encrypted-less, just keys for display)
+  userId       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  builds        BuildRun[]
+  githubIntegration  GitHubIntegration?
+  vercelIntegration  VercelIntegration?
+  nenoIntegration     NenoIntegration?
+
+  @@map("projects")
+  @@index([userId])
+}
+
+model BuildRun {
+  id          String   @id @default(cuid())
+  projectId   String
+  status      String   @default("pending") // pending, running, success, failed
+  log         String   @default("")
+  duration    Int      @default(0) // ms
+  createdAt   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("build_runs")
+  @@index([projectId])
+}
+
+model GitHubIntegration {
+  id           String   @id @default(cuid())
+  projectId    String   @unique
+  accessToken  String   // encrypted in production; stored plaintext for dev
+  username     String
+  repoFullName String
+  defaultBranch String  @default("main")
+  connectedAt  DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("github_integrations")
+}
+
+model VercelIntegration {
+  id           String   @id @default(cuid())
+  projectId    String   @unique
+  accessToken  String
+  teamId       String?
+  vercelProjectId String?  // vercel project id
+  vercelProjectName String?
+  connectedAt  DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("vercel_integrations")
+}
+
+model NenoIntegration {
+  id           String   @id @default(cuid())
+  projectId    String   @unique
+  apiKey       String
+  environment  String   @default("production")
+  connectedAt  DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("neno_integrations")
+}

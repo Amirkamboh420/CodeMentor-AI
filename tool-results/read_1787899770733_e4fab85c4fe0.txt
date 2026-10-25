@@ -1,0 +1,741 @@
+     1→"use client";
+     2→
+     3→import { useEffect, useState, useMemo, useCallback } from "react";
+     4→import {
+     5→  History,
+     6→  Plus,
+     7→  Trash2,
+     8→  MessageSquare,
+     9→  Clock,
+    10→  Loader2,
+    11→  Pin,
+    12→  PinOff,
+    13→  Search,
+    14→  Pencil,
+    15→  Check,
+    16→  X,
+    17→  Tag as TagIcon,
+    18→  Download,
+    19→  Hash,
+    20→} from "lucide-react";
+    21→import { Button } from "@/components/ui/button";
+    22→import { Input } from "@/components/ui/input";
+    23→import { ScrollArea } from "@/components/ui/scroll-area";
+    24→import { Badge } from "@/components/ui/badge";
+    25→import {
+    26→  Sheet,
+    27→  SheetContent,
+    28→  SheetHeader,
+    29→  SheetTitle,
+    30→} from "@/components/ui/sheet";
+    31→import { useAssistantStore, type ChatMessage } from "@/store/assistant-store";
+    32→import { cn } from "@/lib/utils";
+    33→import { toast } from "sonner";
+    34→
+    35→interface ConversationItem {
+    36→  id: string;
+    37→  title: string;
+    38→  requestType: string;
+    39→  techStack: string;
+    40→  pinned: boolean;
+    41→  tags: string;
+    42→  updatedAt: string;
+    43→  _count: { messages: number };
+    44→  totalTokens?: number;
+    45→}
+    46→
+    47→export function HistorySidebar() {
+    48→  const historyOpen = useAssistantStore((s) => s.historyOpen);
+    49→  const setHistoryOpen = useAssistantStore((s) => s.setHistoryOpen);
+    50→  const setMessages = useAssistantStore((s) => s.setMessages);
+    51→  const setConversationId = useAssistantStore((s) => s.setConversationId);
+    52→  const clearConversation = useAssistantStore((s) => s.clearConversation);
+    53→
+    54→  const [items, setItems] = useState<ConversationItem[]>([]);
+    55→  const [loading, setLoading] = useState(false);
+    56→  const [activeId, setActiveId] = useState<string | null>(null);
+    57→  const [query, setQuery] = useState("");
+    58→  const [editingId, setEditingId] = useState<string | null>(null);
+    59→  const [editTitle, setEditTitle] = useState("");
+    60→  const [taggingId, setTaggingId] = useState<string | null>(null);
+    61→  const [tagInput, setTagInput] = useState("");
+    62→  const [activeTag, setActiveTag] = useState<string | null>(null);
+    63→  const [activeSuggestionIdx, setActiveSuggestionIdx] = useState(0);
+    64→
+    65→  const load = useCallback(async (searchQuery?: string) => {
+    66→    setLoading(true);
+    67→    try {
+    68→      const url = searchQuery
+    69→        ? `/api/conversations?q=${encodeURIComponent(searchQuery)}`
+    70→        : "/api/conversations";
+    71→      const res = await fetch(url);
+    72→      const data = await res.json();
+    73→      setItems(data.conversations || []);
+    74→    } catch {
+    75→      // ignore
+    76→    } finally {
+    77→      setLoading(false);
+    78→    }
+    79→  }, []);
+    80→
+    81→  useEffect(() => {
+    82→    if (historyOpen) load();
+    83→  }, [historyOpen, load]);
+    84→
+    85→  // Debounced server-side search across message content.
+    86→  // When the query changes (and the sidebar is open), re-fetch from the
+    87→  // server after a short delay so we can match message bodies, not just
+    88→  // title/type/tags.
+    89→  useEffect(() => {
+    90→    if (!historyOpen) return;
+    91→    const q = query.trim();
+    92→    if (!q) {
+    93→      load();
+    94→      return;
+    95→    }
+    96→    const t = setTimeout(() => load(q), 300);
+    97→    return () => clearTimeout(t);
+    98→  }, [query, historyOpen, load]);
+    99→
+   100→  // Collect all unique tags across conversations for the tag filter bar
+   101→  const allTags = useMemo(() => {
+   102→    const set = new Map<string, number>();
+   103→    for (const c of items) {
+   104→      const tags = (c.tags || "")
+   105→        .split(",")
+   106→        .map((t) => t.trim())
+   107→        .filter(Boolean);
+   108→      for (const t of tags) {
+   109→        set.set(t, (set.get(t) || 0) + 1);
+   110→      }
+   111→    }
+   112→    return Array.from(set.entries())
+   113→      .sort((a, b) => b[1] - a[1])
+   114→      .map(([tag, count]) => ({ tag, count }));
+   115→  }, [items]);
+   116→
+   117→  const filtered = useMemo(() => {
+   118→    let list = items;
+   119→    if (activeTag) {
+   120→      list = list.filter((c) =>
+   121→        (c.tags || "")
+   122→          .split(",")
+   123→          .map((t) => t.trim())
+   124→          .includes(activeTag)
+   125→      );
+   126→    }
+   127→    // Note: text search is now performed server-side (see load(q)), so we
+   128→    // don't re-filter by query here — the server already returned only
+   129→    // matching conversations.
+   130→    return list;
+   131→  }, [items, activeTag]);
+   132→
+   133→  const pinnedItems = filtered.filter((c) => c.pinned);
+   134→  const otherItems = filtered.filter((c) => !c.pinned);
+   135→
+   136→  const startTagging = (c: ConversationItem, e: React.MouseEvent) => {
+   137→    e.stopPropagation();
+   138→    setTaggingId(c.id);
+   139→    setTagInput((c.tags || "").split(",").map((t) => t.trim()).filter(Boolean).join(", "));
+   140→  };
+   141→
+   142→  const saveTags = async (id: string, e: React.MouseEvent) => {
+   143→    e.stopPropagation();
+   144→    const tags = tagInput
+   145→      .split(",")
+   146→      .map((t) => t.trim())
+   147→      .filter(Boolean)
+   148→      .join(", ");
+   149→    try {
+   150→      const res = await fetch(`/api/conversations/${id}`, {
+   151→        method: "PATCH",
+   152→        headers: { "Content-Type": "application/json" },
+   153→        body: JSON.stringify({ tags }),
+   154→      });
+   155→      if (res.ok) {
+   156→        setItems((prev) =>
+   157→          prev.map((c) => (c.id === id ? { ...c, tags } : c))
+   158→        );
+   159→        toast.success("Tags updated");
+   160→      }
+   161→    } catch {
+   162→      toast.error("Failed to update tags");
+   163→    }
+   164→    setTaggingId(null);
+   165→  };
+   166→
+   167→  const cancelTagging = (e: React.MouseEvent) => {
+   168→    e.stopPropagation();
+   169→    setTaggingId(null);
+   170→  };
+   171→
+   172→  const openConversation = async (id: string) => {
+   173→    try {
+   174→      const res = await fetch(`/api/conversations/${id}`);
+   175→      if (!res.ok) throw new Error("Not found");
+   176→      const data = await res.json();
+   177→      const conv = data.conversation;
+   178→      const msgs: ChatMessage[] = (conv.messages || []).map(
+   179→        (m: {
+   180→          id: string;
+   181→          role: string;
+   182→          content: string;
+   183→          requestType: string | null;
+   184→          prompt: string | null;
+   185→          code: string | null;
+   186→          feedback: string | null;
+   187→          createdAt: string;
+   188→        }) => ({
+   189→          id: m.id,
+   190→          role: m.role as "user" | "assistant",
+   191→          content: m.content,
+   192→          requestType: (m.requestType as ChatMessage["requestType"]) || undefined,
+   193→          prompt: m.prompt || undefined,
+   194→          // Map the historical code snapshot so the diff view can compare
+   195→          // against the code present when the request was sent, even for
+   196→          // conversations loaded from the database.
+   197→          code: m.code || undefined,
+   198→          feedback: (m.feedback as ChatMessage["feedback"]) || undefined,
+   199→          createdAt: new Date(m.createdAt).getTime(),
+   200→        })
+   201→      );
+   202→      setMessages(msgs);
+   203→      setConversationId(conv.id);
+   204→      setActiveId(conv.id);
+   205→      setHistoryOpen(false);
+   206→    } catch {
+   207→      toast.error("Failed to load conversation");
+   208→    }
+   209→  };
+   210→
+   211→  const togglePin = async (id: string, pinned: boolean, e: React.MouseEvent) => {
+   212→    e.stopPropagation();
+   213→    // Optimistic update
+   214→    setItems((prev) =>
+   215→      prev.map((c) => (c.id === id ? { ...c, pinned: !pinned } : c))
+   216→    );
+   217→    try {
+   218→      await fetch(`/api/conversations/${id}`, {
+   219→        method: "PATCH",
+   220→        headers: { "Content-Type": "application/json" },
+   221→        body: JSON.stringify({ pinned: !pinned }),
+   222→      });
+   223→      toast.success(!pinned ? "Pinned to top" : "Unpinned");
+   224→    } catch {
+   225→      // revert
+   226→      setItems((prev) =>
+   227→        prev.map((c) => (c.id === id ? { ...c, pinned } : c))
+   228→      );
+   229→      toast.error("Failed to update");
+   230→    }
+   231→  };
+   232→
+   233→  const removeConversation = async (id: string, e: React.MouseEvent) => {
+   234→    e.stopPropagation();
+   235→    try {
+   236→      await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+   237→      setItems((prev) => prev.filter((c) => c.id !== id));
+   238→      if (activeId === id) {
+   239→        clearConversation();
+   240→        setActiveId(null);
+   241→      }
+   242→      toast.success("Conversation deleted");
+   243→    } catch {
+   244→      toast.error("Failed to delete");
+   245→    }
+   246→  };
+   247→
+   248→  const startRename = (c: ConversationItem, e: React.MouseEvent) => {
+   249→    e.stopPropagation();
+   250→    setEditingId(c.id);
+   251→    setEditTitle(c.title);
+   252→  };
+   253→
+   254→  const saveRename = async (id: string, e: React.MouseEvent) => {
+   255→    e.stopPropagation();
+   256→    if (!editTitle.trim()) return;
+   257→    try {
+   258→      const res = await fetch(`/api/conversations/${id}`, {
+   259→        method: "PATCH",
+   260→        headers: { "Content-Type": "application/json" },
+   261→        body: JSON.stringify({ title: editTitle.trim() }),
+   262→      });
+   263→      if (res.ok) {
+   264→        setItems((prev) =>
+   265→          prev.map((c) =>
+   266→            c.id === id ? { ...c, title: editTitle.trim() } : c
+   267→          )
+   268→        );
+   269→        toast.success("Conversation renamed");
+   270→      }
+   271→    } catch {
+   272→      toast.error("Rename failed");
+   273→    }
+   274→    setEditingId(null);
+   275→  };
+   276→
+   277→  const cancelRename = (e: React.MouseEvent) => {
+   278→    e.stopPropagation();
+   279→    setEditingId(null);
+   280→  };
+   281→
+   282→  const startNew = () => {
+   283→    clearConversation();
+   284→    setActiveId(null);
+   285→    setHistoryOpen(false);
+   286→  };
+   287→
+   288→  const handleExportAll = async () => {
+   289→    try {
+   290→      const res = await fetch("/api/conversations/export-all");
+   291→      if (!res.ok) throw new Error("Export failed");
+   292→      const data = await res.json();
+   293→      // Trigger a client-side download
+   294→      const json = JSON.stringify(data, null, 2);
+   295→      const blob = new Blob([json], { type: "application/json" });
+   296→      const url = URL.createObjectURL(blob);
+   297→      const a = document.createElement("a");
+   298→      a.href = url;
+   299→      a.download = `codementor-all-conversations-${Date.now()}.json`;
+   300→      document.body.appendChild(a);
+   301→      a.click();
+   302→      document.body.removeChild(a);
+   303→      setTimeout(() => URL.revokeObjectURL(url), 1000);
+   304→      toast.success(`Exported ${data.count} conversations`);
+   305→    } catch {
+   306→      toast.error("Bulk export failed");
+   307→    }
+   308→  };
+   309→
+   310→  const renderRow = (c: ConversationItem) => {
+   311→    const isEditing = editingId === c.id;
+   312→    const isTagging = taggingId === c.id;
+   313→    const tagList = (c.tags || "")
+   314→      .split(",")
+   315→      .map((t) => t.trim())
+   316→      .filter(Boolean);
+   317→    return (
+   318→      <button
+   319→        key={c.id}
+   320→        onClick={() => !isEditing && !isTagging && openConversation(c.id)}
+   321→        className={cn(
+   322→          "group relative flex w-full flex-col gap-1 rounded-lg border p-2.5 text-left transition-colors",
+   323→          activeId === c.id
+   324→            ? "border-primary/40 bg-primary/5"
+   325→            : "border-transparent hover:bg-accent",
+   326→          (isEditing || isTagging) && "cursor-default border-primary/40 bg-primary/5"
+   327→        )}
+   328→      >
+   329→        {c.pinned && !isEditing && !isTagging && (
+   330→          <Pin className="absolute right-1.5 top-1.5 h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+   331→        )}
+   332→        <div className="flex items-start justify-between gap-2 pr-4">
+   333→          {isEditing ? (
+   334→            <div
+   335→              className="flex w-full items-center gap-1"
+   336→              onClick={(e) => e.stopPropagation()}
+   337→            >
+   338→              <Input
+   339→                value={editTitle}
+   340→                onChange={(e) => setEditTitle(e.target.value)}
+   341→                onKeyDown={(e) => {
+   342→                  if (e.key === "Enter")
+   343→                    saveRename(c.id, e as unknown as React.MouseEvent);
+   344→                  if (e.key === "Escape") cancelRename(e as unknown as React.MouseEvent);
+   345→                }}
+   346→                className="h-6 text-xs"
+   347→                autoFocus
+   348→              />
+   349→              <button
+   350→                onClick={(e) => saveRename(c.id, e)}
+   351→                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-emerald-600 hover:bg-emerald-500/15"
+   352→                aria-label="Save name"
+   353→                title="Save"
+   354→              >
+   355→                <Check className="h-3 w-3" />
+   356→              </button>
+   357→              <button
+   358→                onClick={cancelRename}
+   359→                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent"
+   360→                aria-label="Cancel"
+   361→                title="Cancel"
+   362→              >
+   363→                <X className="h-3 w-3" />
+   364→              </button>
+   365→            </div>
+   366→          ) : (
+   367→            <span className="line-clamp-1 text-xs font-medium">{c.title}</span>
+   368→          )}
+   369→        </div>
+   370→        <div className="flex items-center gap-1.5">
+   371→          <Badge
+   372→            variant="secondary"
+   373→            className="h-4 px-1 text-[9px] uppercase"
+   374→          >
+   375→            {c.requestType}
+   376→          </Badge>
+   377→          {c._count.messages > 0 && (
+   378→            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+   379→              <MessageSquare className="h-2.5 w-2.5" />
+   380→              {c._count.messages}
+   381→            </span>
+   382→          )}
+   383→          {c.totalTokens != null && c.totalTokens > 0 && (
+   384→            <span
+   385→              className="flex items-center gap-0.5 text-[9px] text-muted-foreground/70"
+   386→              title={`~${c.totalTokens} tokens`}
+   387→            >
+   388→              <Hash className="h-2.5 w-2.5" />
+   389→              {c.totalTokens > 1000
+   390→                ? `${(c.totalTokens / 1000).toFixed(1)}k`
+   391→                : c.totalTokens}
+   392→            </span>
+   393→          )}
+   394→          <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+   395→            <Clock className="h-2.5 w-2.5" />
+   396→            {new Date(c.updatedAt).toLocaleDateString(undefined, {
+   397→              month: "short",
+   398→              day: "numeric",
+   399→              hour: "2-digit",
+   400→              minute: "2-digit",
+   401→            })}
+   402→          </span>
+   403→        </div>
+   404→        {/* Tags row */}
+   405→        {!isEditing && !isTagging && tagList.length > 0 && (
+   406→          <div className="flex flex-wrap gap-1 pt-0.5">
+   407→            {tagList.slice(0, 4).map((t) => (
+   408→              <span
+   409→                key={t}
+   410→                className="inline-flex items-center gap-0.5 rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-medium text-violet-600 dark:text-violet-400"
+   411→              >
+   412→                <TagIcon className="h-2 w-2" />
+   413→                {t}
+   414→              </span>
+   415→            ))}
+   416→            {tagList.length > 4 && (
+   417→              <span className="text-[9px] text-muted-foreground">
+   418→                +{tagList.length - 4}
+   419→              </span>
+   420→            )}
+   421→          </div>
+   422→        )}
+   423→        {/* Tag editor */}
+   424→        {isTagging && (
+   425→          <div
+   426→            className="relative flex w-full items-center gap-1 pt-1"
+   427→            onClick={(e) => e.stopPropagation()}
+   428→          >
+   429→            <TagIcon className="h-3 w-3 shrink-0 text-violet-500" />
+   430→            <Input
+   431→              value={tagInput}
+   432→              onChange={(e) => {
+   433→                setTagInput(e.target.value);
+   434→                setActiveSuggestionIdx(0);
+   435→              }}
+   436→              onKeyDown={(e) => {
+   437→                // Compute suggestions here so we can navigate them
+   438→                const parts = tagInput.split(",");
+   439→                const lastToken = (parts[parts.length - 1] || "").trim().toLowerCase();
+   440→                const priorTags = parts
+   441→                  .slice(0, -1)
+   442→                  .map((t) => t.trim())
+   443→                  .filter(Boolean);
+   444→                const suggestions = lastToken
+   445→                  ? allTags
+   446→                      .filter(
+   447→                        ({ tag }) =>
+   448→                          tag.toLowerCase().startsWith(lastToken) &&
+   449→                          !priorTags.includes(tag)
+   450→                      )
+   451→                      .slice(0, 5)
+   452→                  : [];
+   453→                if (e.key === "ArrowDown" && suggestions.length > 0) {
+   454→                  e.preventDefault();
+   455→                  setActiveSuggestionIdx((i) =>
+   456→                    Math.min(i + 1, suggestions.length - 1)
+   457→                  );
+   458→                  return;
+   459→                }
+   460→                if (e.key === "ArrowUp" && suggestions.length > 0) {
+   461→                  e.preventDefault();
+   462→                  setActiveSuggestionIdx((i) => Math.max(i - 1, 0));
+   463→                  return;
+   464→                }
+   465→                if (e.key === "Enter" && suggestions.length > 0) {
+   466→                  e.preventDefault();
+   467→                  const sel = suggestions[activeSuggestionIdx];
+   468→                  if (sel) {
+   469→                    const newParts = [...priorTags, sel.tag];
+   470→                    setTagInput(newParts.join(", ") + ", ");
+   471→                    setActiveSuggestionIdx(0);
+   472→                    return;
+   473→                  }
+   474→                }
+   475→                if (e.key === "Enter") {
+   476→                  e.preventDefault();
+   477→                  saveTags(c.id, e as unknown as React.MouseEvent);
+   478→                }
+   479→                if (e.key === "Escape")
+   480→                  cancelTagging(e as unknown as React.MouseEvent);
+   481→              }}
+   482→              placeholder="react, hooks, bug..."
+   483→              className="h-6 text-[11px]"
+   484→              autoFocus
+   485→            />
+   486→            {/* Tag autocomplete dropdown */}
+   487→            {(() => {
+   488→              // Compute the token being typed (after the last comma)
+   489→              const parts = tagInput.split(",");
+   490→              const lastToken = (parts[parts.length - 1] || "").trim().toLowerCase();
+   491→              const priorTags = parts
+   492→                .slice(0, -1)
+   493→                .map((t) => t.trim())
+   494→                .filter(Boolean);
+   495→              const suggestions = lastToken
+   496→                ? allTags
+   497→                    .filter(
+   498→                      ({ tag }) =>
+   499→                        tag.toLowerCase().startsWith(lastToken) &&
+   500→                        !priorTags.includes(tag)
+   501→                    )
+   502→                    .slice(0, 5)
+   503→                : [];
+   504→              if (suggestions.length === 0) return null;
+   505→              const applySuggestion = (tag: string) => {
+   506→                const newParts = [...priorTags, tag];
+   507→                setTagInput(newParts.join(", ") + ", ");
+   508→                setActiveSuggestionIdx(0);
+   509→              };
+   510→              return (
+   511→                <div className="absolute left-6 top-7 z-20 w-48 rounded-md border border-border bg-popover p-1 shadow-lg">
+   512→                  <p className="px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">
+   513→                    Suggestions
+   514→                  </p>
+   515→                  {suggestions.map(({ tag, count }, idx) => (
+   516→                    <button
+   517→                      key={tag}
+   518→                      type="button"
+   519→                      onClick={() => applySuggestion(tag)}
+   520→                      className={cn(
+   521→                        "flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px]",
+   522→                        idx === activeSuggestionIdx
+   523→                          ? "bg-accent text-foreground"
+   524→                          : "hover:bg-accent"
+   525→                      )}
+   526→                    >
+   527→                      <TagIcon className="h-2.5 w-2.5 text-violet-500" />
+   528→                      <span className="flex-1 truncate">{tag}</span>
+   529→                      <span className="text-[9px] text-muted-foreground">
+   530→                        {count}
+   531→                      </span>
+   532→                    </button>
+   533→                  ))}
+   534→                </div>
+   535→              );
+   536→            })()}
+   537→            <button
+   538→              onClick={(e) => saveTags(c.id, e)}
+   539→              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-emerald-600 hover:bg-emerald-500/15"
+   540→              aria-label="Save tags"
+   541→              title="Save tags"
+   542→            >
+   543→              <Check className="h-3 w-3" />
+   544→            </button>
+   545→            <button
+   546→              onClick={cancelTagging}
+   547→              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent"
+   548→              aria-label="Cancel"
+   549→              title="Cancel"
+   550→            >
+   551→              <X className="h-3 w-3" />
+   552→            </button>
+   553→          </div>
+   554→        )}
+   555→        {/* Hover actions */}
+   556→        {!isEditing && !isTagging && (
+   557→          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+   558→            <button
+   559→              onClick={(e) => togglePin(c.id, c.pinned, e)}
+   560→              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+   561→              aria-label={c.pinned ? "Unpin" : "Pin"}
+   562→              title={c.pinned ? "Unpin" : "Pin to top"}
+   563→            >
+   564→              {c.pinned ? (
+   565→                <PinOff className="h-3 w-3" />
+   566→              ) : (
+   567→                <Pin className="h-3 w-3" />
+   568→              )}
+   569→            </button>
+   570→            <button
+   571→              onClick={(e) => startTagging(c, e)}
+   572→              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-violet-600"
+   573→              aria-label="Edit tags"
+   574→              title="Edit tags"
+   575→            >
+   576→              <TagIcon className="h-3 w-3" />
+   577→            </button>
+   578→            <button
+   579→              onClick={(e) => startRename(c, e)}
+   580→              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+   581→              aria-label="Rename"
+   582→              title="Rename"
+   583→            >
+   584→              <Pencil className="h-3 w-3" />
+   585→            </button>
+   586→            <button
+   587→              onClick={(e) => removeConversation(c.id, e)}
+   588→              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
+   589→              aria-label="Delete"
+   590→              title="Delete"
+   591→            >
+   592→              <Trash2 className="h-3 w-3" />
+   593→            </button>
+   594→          </div>
+   595→        )}
+   596→      </button>
+   597→    );
+   598→  };
+   599→
+   600→  return (
+   601→    <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+   602→      <SheetContent side="left" className="w-full p-0 sm:max-w-sm">
+   603→        <SheetHeader className="border-b border-border px-4 py-3">
+   604→          <div className="flex items-center justify-between">
+   605→            <SheetTitle className="flex items-center gap-2 text-sm">
+   606→              <History className="h-4 w-4" /> History
+   607→            </SheetTitle>
+   608→            <div className="flex items-center gap-1">
+   609→              <Button
+   610→                size="sm"
+   611→                variant="ghost"
+   612→                onClick={handleExportAll}
+   613→                className="h-7 gap-1 text-xs text-muted-foreground"
+   614→                title="Export all conversations to JSON (backup)"
+   615→              >
+   616→                <Download className="h-3 w-3" /> All
+   617→              </Button>
+   618→              <Button
+   619→                size="sm"
+   620→                variant="outline"
+   621→                onClick={startNew}
+   622→                className="h-7 gap-1 text-xs"
+   623→              >
+   624→                <Plus className="h-3 w-3" /> New
+   625→              </Button>
+   626→            </div>
+   627→          </div>
+   628→        </SheetHeader>
+   629→
+   630→        {/* Search */}
+   631→        {items.length > 0 && (
+   632→          <div className="border-b border-border p-2">
+   633→            <div className="relative">
+   634→              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+   635→              <Input
+   636→                value={query}
+   637→                onChange={(e) => setQuery(e.target.value)}
+   638→                placeholder="Search conversations..."
+   639→                className="h-8 pl-7 text-xs"
+   640→              />
+   641→            </div>
+   642→            {/* Tag filter chips */}
+   643→            {allTags.length > 0 && (
+   644→              <div className="mt-2 flex flex-wrap gap-1">
+   645→                {allTags.map(({ tag, count }) => {
+   646→                  const isActive = activeTag === tag;
+   647→                  return (
+   648→                    <button
+   649→                      key={tag}
+   650→                      onClick={() => setActiveTag(isActive ? null : tag)}
+   651→                      className={cn(
+   652→                        "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors",
+   653→                        isActive
+   654→                          ? "bg-violet-500 text-white"
+   655→                          : "bg-violet-500/10 text-violet-600 hover:bg-violet-500/20 dark:text-violet-400"
+   656→                      )}
+   657→                      title={`Filter by "${tag}" (${count})`}
+   658→                    >
+   659→                      <TagIcon className="h-2 w-2" />
+   660→                      {tag}
+   661→                      <span className="opacity-60">{count}</span>
+   662→                    </button>
+   663→                  );
+   664→                })}
+   665→                {activeTag && (
+   666→                  <button
+   667→                    onClick={() => setActiveTag(null)}
+   668→                    className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground hover:text-foreground"
+   669→                  >
+   670→                    <X className="h-2 w-2" /> Clear
+   671→                  </button>
+   672→                )}
+   673→              </div>
+   674→            )}
+   675→          </div>
+   676→        )}
+   677→
+   678→        <div className="flex-1 overflow-hidden">
+   679→          {loading ? (
+   680→            <div className="flex items-center justify-center py-10 text-muted-foreground">
+   681→              <Loader2 className="h-4 w-4 animate-spin" />
+   682→            </div>
+   683→          ) : items.length === 0 ? (
+   684→            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+   685→              <MessageSquare className="h-8 w-8 opacity-40" />
+   686→              {query.trim() ? (
+   687→                <>
+   688→                  <p className="text-xs">
+   689→                    No matches for &quot;{query}&quot;
+   690→                  </p>
+   691→                  <p className="text-[10px] text-muted-foreground/70">
+   692→                    Searched titles, tags, and message content
+   693→                  </p>
+   694→                </>
+   695→              ) : (
+   696→                <>
+   697→                  <p className="text-xs">No conversations yet</p>
+   698→                  <p className="text-[10px]">
+   699→                    Your past sessions will appear here.
+   700→                  </p>
+   701→                </>
+   702→              )}
+   703→            </div>
+   704→          ) : (
+   705→            <ScrollArea className="h-[calc(100vh-9rem)]">
+   706→              <div className="space-y-3 p-2">
+   707→                {pinnedItems.length > 0 && (
+   708→                  <div>
+   709→                    <p className="mb-1 flex items-center gap-1 px-1 text-[9px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+   710→                      <Pin className="h-2.5 w-2.5" /> Pinned
+   711→                    </p>
+   712→                    <div className="space-y-1">{pinnedItems.map(renderRow)}</div>
+   713→                  </div>
+   714→                )}
+   715→                {otherItems.length > 0 && (
+   716→                  <div>
+   717→                    {pinnedItems.length > 0 && (
+   718→                      <p className="mb-1 px-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+   719→                        Recent
+   720→                      </p>
+   721→                    )}
+   722→                    <div className="space-y-1">{otherItems.map(renderRow)}</div>
+   723→                  </div>
+   724→                )}
+   725→                {filtered.length === 0 && (
+   726→                  <div className="py-6 text-center text-xs text-muted-foreground">
+   727→                    <p>No matches for &quot;{query}&quot;</p>
+   728→                    <p className="mt-1 text-[10px] text-muted-foreground/70">
+   729→                      Searched titles, tags, and message content
+   730→                    </p>
+   731→                  </div>
+   732→                )}
+   733→              </div>
+   734→            </ScrollArea>
+   735→          )}
+   736→        </div>
+   737→      </SheetContent>
+   738→    </Sheet>
+   739→  );
+   740→}
+   741→

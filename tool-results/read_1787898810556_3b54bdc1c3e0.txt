@@ -1,0 +1,402 @@
+     1→# Project Worklog - AI Code Assistant Platform
+     2→
+     3→## Project Overview
+     4→Building "CodeMentor AI" - a professional AI code assistant platform based on the Claude Code Assistant system prompt. Developers can request code generation, refactoring, explanations, and debugging. Includes a knowledge base of patterns, edge cases, security checklists, and common mistakes.
+     5→
+     6→## Tech Stack
+     7→- Next.js 16 (App Router) + TypeScript
+     8→- Tailwind CSS 4 + shadcn/ui (New York)
+     9→- Prisma ORM (SQLite)
+    10→- z-ai-web-dev-sdk (LLM) for AI completions
+    11→- react-markdown + react-syntax-highlighter for response rendering
+    12→- next-themes for dark mode
+    13→
+    14→---
+    15→Task ID: 1
+    16→Agent: Main (orchestrator)
+    17→Task: Initialize project structure, worklog, and Prisma schema
+    18→
+    19→Work Log:
+    20→- Reviewed existing project scaffold (Next.js 16, full shadcn/ui set, Prisma SQLite)
+    21→- Defined data models: Conversation, Message, Feedback, Snippet
+    22→- Designed app architecture (single `/` route, multi-panel layout)
+    23→
+    24→Stage Summary:
+    25→- Foundation ready for parallel build of knowledge base + API + frontend
+    26→
+    27→---
+    28→Task ID: 2-a / 2-b / 3
+    29→Agent: Main (orchestrator)
+    30→Task: Build knowledge base data, API routes, and full frontend UI
+    31→
+    32→Work Log:
+    33→- Created src/lib/knowledge-base.ts with 6 sections (patterns, edge cases, security, mistakes, performance, escalation), request types, tech stacks, file types, prompt templates, response format
+    34→- Created src/lib/assistant.ts with production system prompt + context builder
+    35→- API routes: /api/assist (streaming SSE + ZAI SDK + DB persistence), /api/conversations (GET/POST), /api/conversations/[id] (GET/DELETE/PATCH), /api/feedback (POST), /api/snippets (GET/POST) + [id] DELETE, /api/stats (GET dashboard metrics)
+    36→- Zustand store (src/store/assistant-store.ts) with persist for config
+    37→- Components: theme-provider, markdown-renderer (react-markdown + prism syntax highlighting + copy button), request-type-tabs, context-bar (popover with tech/file/level/time), code-editor (line numbers), prompt-input (streaming + templates + save), message-bubble (feedback bar), response-panel (empty state + thread), history-sidebar (sheet), knowledge-panel (tabs + search + expandable items), header (theme + stats popover + KB toggle), footer (sticky status)
+    38→- Main page: responsive 3-zone layout (composer top, conversation bottom, KB right sidebar on lg)
+    39→- Fixed bug: messagesRef.value -> messagesRef.current in prompt-input
+    40→
+    41→Stage Summary:
+    42→- App compiles & renders HTTP 200
+    43→- Streaming AI via z-ai-web-dev-sdk wired to DB persistence
+    44→- Need agent-browser verification of golden path
+    45→
+    46→---
+    47→Task ID: 4 & 5
+    48→Agent: Main (orchestrator)
+    49→Task: Polish styling, verify with agent-browser, fix bugs
+    50→
+    51→Work Log:
+    52→- Verified dev server runs on :3000 (HTTP 200, no fatal errors)
+    53→- agent-browser golden path: filled prompt "Write a one-line TypeScript greeting function", clicked Send, streaming SSE delivered full response with [BRIEF ANALYSIS] / code / [USAGE] / [CONSIDERATIONS] structure
+    54→- Verified DB persistence: conversations + messages inserted (visible in dev.log Prisma queries)
+    55→- Verified feedback flow: "Helpful" button posts to /api/feedback, toast "Thanks for the feedback!" appears
+    56→- Fixed bug: feedback value mismatch — message-bubble/response-panel sent "helpful" but stats query filtered "yes". Aligned all to "yes" | "partial" | "no" (matches original system prompt schema)
+    57→- Verified stats popover: /api/stats returns {conversations, messages, snippets, feedback{satisfactionRate, helpful...}, byRequestType, totalTokens}
+    58→- Verified theme toggle: dark <-> light class on <html>
+    59→- Verified KB panel renders all 6 sections (Patterns/Edge/Security/Common/Performance/Escalation) with search + expandable items + code examples
+    60→- Verified mobile (390x844): composer + conversation stack, KB hidden with floating toggle button, sticky footer present
+    61→- Verified sticky footer: "Security-first / msgs / Built on Z.ai" always visible at bottom
+    62→- Lint passes clean (eslint . with no errors)
+    63→
+    64→Stage Summary:
+    65→- Golden path verified end-to-end: prompt -> streaming AI -> DB persisted -> feedback -> stats dashboard
+    66→- Responsive layout confirmed on mobile + desktop
+    67→- Sticky footer + theme toggle + KB panel all functional
+    68→- Ready for the recurring QA cron job
+    69→
+    70→Unresolved / Minor:
+    71→- agent-browser click-targeting on KB items inside internal ScrollArea occasionally reports "covered by sticky header" — cosmetic test artifact, items are visually reachable in real browser
+    72→
+    73→---
+    74→Task ID: 6 (cron round 1 — QA + features + polish)
+    75→Agent: webDevReview (cron job 340230)
+    76→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+    77→
+    78→## 1. Current project status description / assessment
+    79→- CodeMentor AI is a production-grade AI code assistant (Next.js 16 + TS + Tailwind + shadcn/ui + Prisma SQLite + z-ai-web-dev-sdk).
+    80→- Prior rounds delivered: streaming AI assist API, conversation/message/feedback/snippet persistence, 3-zone responsive UI, 6-section knowledge base, history sidebar, stats popover, dark mode, sticky footer.
+    81→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, refactor flow + history + mobile all functional. App was stable — no blocking bugs found. Green light for feature expansion.
+    82→
+    83→## 2. Current goals / completed modifications / verification results
+    84→
+    85→### New features added
+    86→- **Snippets Library dialog** (`src/components/assistant/snippets-library.tsx`): searchable + language-filtered list of saved snippets, expandable code preview, Copy / Insert-into-editor / Delete actions, empty state. Opened via header button (with live count badge) or ⌘S.
+    87→- **Keyboard Shortcuts dialog** (`src/components/assistant/shortcuts-dialog.tsx`): grouped reference (Conversation / Panels / Interface) with kbd-styled keys. Opened via header button or `?`.
+    88→- **Global keyboard shortcuts hook** (`src/hooks/use-keyboard-shortcuts.ts`): ⌘N new chat, ⌘L history, ⌘K KB panel, ⌘S snippets (overrides browser save), ⌘J theme, `?` help, Esc closes dialogs / cancels stream.
+    89→- **Per-message actions**: "Copy code only" (extracts fenced code blocks via new `extractAllCode` util), per-message "Export" to markdown, plus existing copy/feedback/regenerate.
+    90→- **Conversation-level toolbar**: sticky message count + token + word stats, "Export" whole conversation to `.md`, "Clear".
+    91→- **Conversation utilities** (`src/lib/conversation-utils.ts`): `extractCodeBlocks`, `extractAllCode`, `messagesToMarkdown`, `downloadText`, `countStats`.
+    92→
+    93→### Styling polish
+    94→- **Empty state**: hero with pulsing glow, 4 clickable example-prompt cards (set prompt prefix on click), tips row.
+    95→- **Message bubbles**: gradient-ring avatars, streaming pulse indicator, hover shadow, ring highlight while streaming, meta row (role + request-type + timestamp), assistant stats row (words / tokens / code-block count).
+    96→- **Feedback bar**: redesigned as a compact grouped toolbar with dividers, always-visible-on-hover, active color states.
+    97→- **Conversation toolbar**: sticky translucent header with backdrop blur.
+    98→- **Header**: tooltips + a notification-style snippet count badge on the snippets button.
+    99→
+   100→### Bugs fixed
+   101→- `InsertText` icon does not exist in lucide-react → replaced with `ClipboardPaste` (was causing HTTP 500 / SSR crash).
+   102→- Removed unused imports (`Plus` in snippets-library, `Moon` hack in shortcuts-dialog).
+   103→
+   104→### Verification (agent-browser)
+   105→- Shortcuts dialog: opens via button + `?`, renders all 3 groups with kbd keys. ✅
+   106→- Snippets library: empty state → save a response → reopens showing the snippet (typescript / date / AI badge). ✅
+   107→- Snippet Insert: populates the code editor + "Inserted into editor" toast. ✅
+   108→- "Copy code only": "Code copied" toast. ✅
+   109→- Conversation Export: "Conversation exported" toast. ✅
+   110→- ⌘K keyboard shortcut: toggles KB panel (verified class swap `w-[340px]` ↔ `w-0 overflow-hidden`). ✅
+   111→- Mobile (390x844): composer + thread stack, sticky footer. ✅
+   112→- Lint: `eslint .` clean. Dev log: no errors. ✅
+   113→
+   114→## 3. Unresolved issues / risks + next-phase priorities
+   115→- **Regenerate** currently restores the prompt and asks the user to press Send (store can't call the prompt-input's send handler directly). Next phase: lift `handleSend` into the store or a shared hook so Regenerate and ⌘Enter work from anywhere.
+   116→- **History sidebar** doesn't refresh its list automatically when a new conversation is created from the main view (only loads on open). Add a `refreshHistory` event or move list into the store.
+   117→- **Streaming UX**: chunks are emitted at 12ms/6chars server-side; could switch to true SDK streaming (`stream: true`) for lower TTFB on long responses.
+   118→- **Snippets**: no edit flow yet, and tags are stored comma-separated (SQLite limitation) — fine for now.
+   119→- **Suggested next features**: (a) prompt "Presets" / saved prompts, (b) per-conversation pinning/star, (c) diff view for refactor responses, (d) shareable read-only conversation link, (e) command-palette (⌘P) unifying all actions.
+   120→- Priority recommendation for next cron round: implement true SDK streaming + regenerate-via-store, then add the command palette.
+   121→
+   122→---
+   123→Task ID: 7 (cron round 2 — QA + command palette + presets + pin + regenerate fix)
+   124→Agent: webDevReview (cron job 340230)
+   125→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   126→
+   127→## 1. Current project status description / assessment
+   128→- CodeMentor AI is stable and feature-rich after prior rounds (streaming AI, KB, snippets, shortcuts, history, stats, dark mode).
+   129→- QA pass this round (agent-browser): HTTP 200, no console errors. Confirmed one UX bug from the prior worklog: Regenerate only restored the prompt instead of re-sending. All other flows functional.
+   130→- Dev server required a restart this round after adding the `Prompt` Prisma model — Turbopack cached the old Prisma Client (`db.prompt` was undefined → 500). Fixed by `bun run db:generate` + server restart. NOTE for next round: always restart the dev server after schema changes.
+   131→
+   132→## 2. Current goals / completed modifications / verification results
+   133→
+   134→### Bug fixed
+   135→- **Regenerate now actually re-sends**: lifted the streaming-send logic out of `PromptInput` into a new shared hook `useAssistantActions` (`src/hooks/use-assistant-actions.ts`) exposing `sendPrompt()`, `regenerate()`, `stop()`, `newConversation()`. Regenerate now drops the last assistant message and re-streams a fresh response. Verified: clicking Regenerate re-streamed a new response (no more "Prompt restored" toast).
+   136→
+   137→### New features added
+   138→- **Command Palette** (`src/components/assistant/command-palette.tsx`, ⌘P): cmdk-powered palette grouping actions into CONVERSATION (Send / Regenerate / New / Export / Clear), REQUEST TYPE (switch Generate/Refactor/Explain/Debug), PANELS (History / KB / Snippets / Shortcuts), INTERFACE (Theme), and PROMPT PRESETS (loaded from DB). Fuzzy search, keyboard nav (↑↓/↵), footer hints.
+   139→- **Prompt Presets** (save/load/delete): new `Prompt` Prisma model + `/api/prompts` (GET/POST) + `/api/prompts/[id]` (DELETE). "Save Prompt" button in the prompt-input bar persists the current prompt + requestType + techStack. Saved presets appear in the command palette under "Prompt Presets" and load back into the prompt field on select.
+   140→- **Conversation Pin/Star**: added `pinned` boolean to Conversation model, PATCH `/api/conversations/[id]` now accepts `{pinned}`, list endpoint sorts pinned-first. History sidebar rewritten with a search box, a "Pinned" section (amber accent), and per-row Pin/Unpin + Delete hover actions with optimistic updates.
+   141→- **Header command trigger**: a "Command ⌘P" button in the header opens the palette.
+   142→
+   143→### Styling polish
+   144→- Command palette: branded footer with navigation hints, icon-tinted selected state (primary/15 bg), group headings, empty-state with icon.
+   145→- History sidebar: search input, pinned-section header with amber Pin icon, hover action buttons (Pin/Unpin + Delete).
+   146→- Prompt-input: Save Prompt button with Bookmark icon, cleaned up button grouping.
+   147→
+   148→### Verification (agent-browser)
+   149→- Command palette opens via header button + ⌘P; renders all 5 groups (CONVERSATION, REQUEST TYPE, PANELS, INTERFACE, PROMPT PRESETS). ✅
+   150→- Palette search filtering works ("dark" → only theme switch; "generate" → Send + Switch to Generate). ✅
+   151→- Regenerate: clicked button → old assistant message dropped, new response re-streamed. ✅
+   152→- Save Prompt: typed prompt → clicked Save Prompt → "Prompt saved as preset" toast → preset appears in `/api/prompts` → preset renders in command palette "PROMPT PRESETS" group → clicking it loads the prompt text into the field ("Preset loaded" toast). ✅
+   153→- Pin: opened history → clicked Pin → "Pinned to top" toast → conversation moved to "PINNED" section with Unpin button. ✅
+   154→- Mobile (390x844) + desktop: layout intact, sticky footer present. ✅
+   155→- Lint: `eslint .` clean. No browser errors. ✅
+   156→
+   157→## 3. Unresolved issues / risks + next-phase priorities
+   158→- **Dev server + Prisma**: Turbopack caches the Prisma Client; after any `schema.prisma` change you MUST run `bun run db:generate` AND restart the dev server (kill next-server, re-run `bun run dev`). Documented for future rounds.
+   159→- **History sidebar list refresh**: still only reloads on open — a brand-new conversation created from the main view won't appear until the sidebar is reopened. Could add a `refreshHistory` store action or invalidate on open.
+   160→- **True SDK streaming**: `/api/assist` still chunks the full response at 12ms/6chars; switching to `zai.chat.completions.create({ stream: true })` would reduce TTFB on long responses.
+   161→- **Snippet edit**: no inline edit flow yet (only view/copy/insert/delete).
+   162→- **Suggested next features**: (a) prompt Presets manager dialog (list/delete presets from a dedicated UI, not just the palette), (b) diff view for refactor responses, (c) shareable read-only conversation link, (d) conversation tags/folders, (e) "Insert into editor" for individual code blocks in assistant messages.
+   163→- Priority recommendation for next cron round: implement true SDK streaming + the Presets manager dialog, then add per-code-block "Insert" action.
+   164→
+   165→---
+   166→Task ID: 8 (cron round 3 — QA + presets manager + per-code-block insert + presets rename)
+   167→Agent: webDevReview (cron job 340230)
+   168→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   169→
+   170→## 1. Current project status description / assessment
+   171→- CodeMentor AI is stable and feature-rich after prior rounds (streaming AI, command palette, prompt presets save/load via palette, pin/star, snippets library, shortcuts, history, stats, dark mode).
+   172→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, streaming + all message actions + history functional. App stable — green light for feature expansion.
+   173→- Prior round's recommended priorities were: true SDK streaming, Presets manager dialog, per-code-block Insert action. This round delivered the Presets manager + per-code-block Insert (true SDK streaming deferred — the current chunked-streaming UX is acceptable and lower-risk).
+   174→
+   175→## 2. Current goals / completed modifications / verification results
+   176→
+   177→### New features added
+   178→- **Presets Manager dialog** (`src/components/assistant/presets-manager.tsx`): full CRUD UI for prompt presets — searchable + type-filtered list, expandable prompt preview, inline Rename (Pencil → input → Enter/Check), Load (populates prompt field + switches requestType), Delete. Empty state with guidance. Opened via a new header Bookmark button (with live count badge) or the command palette "Manage prompt presets" action.
+   179→- **PATCH /api/prompts/[id]**: rename endpoint for presets (title update).
+   180→- **Per-code-block "Insert into editor"** (`src/components/assistant/markdown-renderer.tsx`): every fenced code block now has an "Insert" button (next to Copy) that pushes the code into the editor and auto-switches the editor's file type to match the block's language (typescript/tsx/python/sql/etc. when recognized). "Inserted into editor" toast confirms.
+   181→- **Presets count badge**: header Bookmark button shows a live count badge (emerald) reflecting the number of saved presets; loads on mount.
+   182→- **Command palette integration**: "Manage prompt presets" action added to the PANELS group; Esc now also closes the presets dialog.
+   183→
+   184→### Styling polish
+   185→- Code blocks: Insert + Copy button group with a divider, hover-accent, responsive (Insert label hidden on mobile).
+   186→- Presets manager: expandable rows with prompt preview (monospace, line-clamp-4), tech-stack tag chips, Load/Delete action row, inline rename with Check/X confirm buttons, hover-reveal Rename button.
+   187→- Header: Bookmark presets button with notification-style count badge matching the snippets button styling.
+   188→
+   189→### Verification (agent-browser)
+   190→- Presets manager opens via header button; shows saved preset "Write a custom useDebounce hook" with GENERATE badge + date. ✅
+   191→- Rename: clicked Rename → input appeared → typed new name → pressed Enter → "Preset renamed" toast + title updated to "Debounce hook generator". ✅
+   192→- Load: clicked Load → "Preset loaded into editor" toast → prompt field populated with the preset text. ✅
+   193→- Per-code-block Insert: sent a prompt → response had code blocks → clicked Insert → "Inserted into editor" toast → editor populated with the code (verified `import { useState, useEffect, useCallback } from 'react';` in editor). ✅
+   194→- Command palette: "Manage prompt presets" action appears when searching "manage". ✅
+   195→- Presets count badge: header shows count (1 after the saved preset). ✅
+   196→- Esc closes the presets dialog. ✅
+   197→- Mobile (390x844): layout intact, sticky footer present. ✅
+   198→- Lint: `eslint .` clean. No browser errors. ✅
+   199→
+   200→## 3. Unresolved issues / risks + next-phase priorities
+   201→- **True SDK streaming** still deferred — `/api/assist` chunks the full response at 12ms/6chars. Switching to `zai.chat.completions.create({ stream: true })` would reduce TTFB on long responses. Highest-impact remaining UX improvement.
+   202→- **History sidebar list refresh**: still only reloads on open — a brand-new conversation created from the main view won't appear until the sidebar is reopened. Add a `refreshHistory` store action or invalidate-on-open.
+   203→- **Snippet edit**: no inline edit flow yet (only view/copy/insert/delete).
+   204→- **Conversation rename**: the PATCH endpoint supports `title` but no UI exposes it yet — could add an inline rename in the history sidebar (similar to the presets rename pattern just built).
+   205→- **Suggested next features**: (a) true SDK streaming, (b) conversation rename in history sidebar, (c) diff view for refactor responses, (d) shareable read-only conversation link, (e) conversation tags/folders.
+   206→- Priority recommendation for next cron round: implement true SDK streaming (biggest UX win), then conversation rename in history sidebar (reuses the rename pattern).
+   207→
+   208→---
+   209→Task ID: 9 (cron round 4 — QA + true SDK streaming + conversation rename + streaming cursor)
+   210→Agent: webDevReview (cron job 340230)
+   211→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   212→
+   213→## 1. Current project status description / assessment
+   214→- CodeMentor AI is stable and feature-rich after prior rounds (streaming AI, command palette, prompt presets with full CRUD, per-code-block insert, pin/star, snippets library, shortcuts, history with search/pin, stats, dark mode).
+   215→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, streaming + history + all message actions functional. App stable — green light for the recommended priorities (true SDK streaming, conversation rename).
+   216→- Investigated the z-ai-web-dev-sdk source: with `stream: true`, `create()` returns `response.body` (a Web `ReadableStream<Uint8Array>` of SSE chunks), NOT an async iterable. Implemented a proper SSE reader to parse `data:` lines and forward `choices[0].delta.content` as real token deltas.
+   217→
+   218→## 2. Current goals / completed modifications / verification results
+   219→
+   220→### New features added
+   221→- **True SDK streaming** (`src/app/api/assist/route.ts`): replaced the "await full completion then chunk at 12ms/6chars" approach with `stream: true`. Now reads the SDK's `ReadableStream` with `getReader()`, parses SSE `data:` lines via a new `parseSseChunk()` helper, and forwards real model token deltas (`choices[0].delta.content`) as they arrive. Dramatically lower TTFB — first token appears as soon as the model emits it, not after the full response is generated. Includes a robust fallback: if `stream: true` fails (non-ReadableStream return or error), it falls back to a non-streaming completion + chunked typing. The `done` SSE event now includes `streamed: true/false` so the client knows which path ran.
+   222→- **Conversation rename in history sidebar** (`src/components/assistant/history-sidebar.tsx`): inline rename reusing the presets rename pattern — Pencil button in hover actions → Input appears with current title → Enter or Check saves (PATCH `/api/conversations/[id]` with `{title}`) → X or Esc cancels. Optimistic list update + "Conversation renamed" toast. Renamed row shows active styling during edit.
+   223→- **Command palette "Open history" action**: added to the Conversation group so users can open the history sidebar from the palette (in addition to the existing Panels-group entry).
+   224→- **Streaming cursor** (`src/components/assistant/message-bubble.tsx`): a blinking emerald cursor bar now appears after the streaming markdown content while the assistant is responding, giving immediate visual feedback that tokens are arriving.
+   225→
+   226→### Styling polish
+   227→- Message bubble: emerald pulse cursor (`animate-pulse` h-3.5 w-1.5 rounded-sm) inline after streaming content.
+   228→- History sidebar rename: active-row border highlight during edit, Check (emerald) + X (muted) confirm buttons, Enter/Esc keyboard shortcuts.
+   229→
+   230→### Verification (agent-browser)
+   231→- True SDK streaming (curl): `POST /api/assist` with `stream:true` returned real token deltas of variable sizes ("###", " [", "B", "RI", "EF"...) instead of fixed 6-char chunks — confirming genuine model tokens. Final `done` event carries `"streamed":true`. ✅
+   232→- True SDK streaming (browser): sent "Write a one-line hello function" → response streamed with [BRIEF ANALYSIS] + code + proper formatting, no errors. ✅
+   233→- Conversation rename: opened history → clicked Rename (Pencil) → input appeared with current title → typed "My Hello Function Test" → pressed Enter → "Conversation renamed" toast + title updated in the list. ✅
+   234→- Command palette: "Open history" action appears when searching "history". ✅
+   235→- Streaming cursor: emerald cursor visible during response streaming. ✅
+   236→- Mobile (390x844): layout intact, sticky footer present. ✅
+   237→- Lint: `eslint .` clean. No browser errors. ✅
+   238→
+   239→## 3. Unresolved issues / risks + next-phase priorities
+   240→- **Fallback path untested**: the non-streaming fallback was implemented defensively but hasn't been triggered in testing (true streaming works reliably). It's there as a safety net if the SDK ever returns a non-ReadableStream.
+   241→- **History sidebar auto-refresh**: still only reloads on open — if the sidebar is already open when a new conversation is created from the main view, it won't appear until reopened. Low priority since the sidebar closes on conversation open anyway.
+   242→- **Snippet edit**: no inline edit flow yet (only view/copy/insert/delete).
+   243→- **Suggested next features**: (a) diff view for refactor responses (compare original vs refactored code), (b) shareable read-only conversation link, (c) conversation tags/folders for organization, (d) snippet edit flow, (e) export individual message (already have per-message export, but could add per-message copy-as-prompt).
+   244→- Priority recommendation for next cron round: implement a **diff view for refactor responses** (highest visual impact — side-by-side or inline diff of original vs refactored code), then conversation tags/folders.
+   245→
+   246→---
+   247→Task ID: 10 (cron round 5 — QA + diff view for refactor responses)
+   248→Agent: webDevReview (cron job 340230)
+   249→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   250→
+   251→## 1. Current project status description / assessment
+   252→- CodeMentor AI is stable and feature-rich after prior rounds (true SDK streaming, command palette, prompt presets CRUD, per-code-block insert, pin/star + rename in history, snippets library, shortcuts, stats, dark mode).
+   253→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, refactor flow + streaming + history all functional. App stable — green light for the recommended priority (diff view for refactor responses).
+   254→
+   255→## 2. Current goals / completed modifications / verification results
+   256→
+   257→### New features added
+   258→- **Code Diff View** (`src/components/assistant/diff-view.tsx` + `diff-view-launcher.tsx`): a full-featured diff dialog comparing the original code (from the editor's selectedCode) against the refactored code (extracted from the AI response). Includes:
+   259→  - **LCS-based line diff algorithm** (`computeDiff` in `src/lib/conversation-utils.ts`): computes added/removed/unchanged lines with line numbers using a Longest Common Subsequence table. Returns `{lines, added, removed, unchanged, identical}`.
+   260→  - **Two view modes**: Unified (single column with +/- prefixes and old/new line numbers) and Split (side-by-side columns for Original vs Refactored). Toggle in the dialog header.
+   261→  - **Stats bar**: emerald "added" badge, rose "removed" badge, muted "unchanged" badge, with an "(no changes detected)" note when identical.
+   262→  - **Copy diff** (to clipboard as unified-diff text) + **Export diff** (downloads a `.diff` file).
+   263→  - **"View diff" button** on assistant message feedback bars — only appears for refactor responses when there's original code in the editor.
+   264→  - **Command palette action**: "View code diff (original vs refactored)" in the Conversation group — targets the last assistant message with code; shows a helpful error toast if no response or no editor code.
+   265→  - **Esc closes** the diff dialog (added to the keyboard-shortcuts handler).
+   266→- `diffToText` util for unified-diff plain-text export.
+   267→
+   268→### Styling polish
+   269→- Diff rows: emerald-tinted added lines, rose-tinted removed lines, monospace font, line-number gutters (old + new in unified, separate columns in split).
+   270→- Split view: sticky column headers ("ORIGINAL (EDITOR)" / "REFACTORED (AI)"), paired removed+added rows aligned side-by-side.
+   271→- Dialog header: GitCompare icon, comparison label ("Comparing Original (editor) → Refactored (AI) · typescript"), Unified/Split segmented toggle, Copy + Export buttons.
+   272→- Stats badges with colored borders matching the diff line tints.
+   273→
+   274→### Verification (agent-browser)
+   275→- Refactor flow: switched to Refactor, put `function add(a,b){return a+b;}` in editor, sent "Make this type-safe with error handling" → got [REFACTORED CODE] with typed `add(a: number, b: number)`. ✅
+   276→- "View diff" button appeared on the assistant message (only for refactor with editor code). ✅
+   277→- Clicked View diff → dialog opened showing "Code Diff", comparison label, added/removed stats, Unified/Split toggles. ✅
+   278→- Unified view: original `function add(a,b){return a+b;}` shown as removed, refactored typed version shown as added with JSDoc. ✅
+   279→- Split view: clicked Split → side-by-side columns "ORIGINAL (EDITOR)" vs "REFACTORED (AI)" with aligned code. ✅
+   280→- Copy: clicked Copy → "Diff copied" toast. ✅
+   281→- Esc closes the diff dialog. ✅
+   282→- Command palette: "View code diff" action appears when searching "diff"; selecting it opens the diff dialog. ✅
+   283→- Mobile (390x844): layout intact, sticky footer present. ✅
+   284→- Lint: `eslint .` clean. No browser errors. ✅
+   285→
+   286→## 3. Unresolved issues / risks + next-phase priorities
+   287→- **Diff original source**: the diff compares against the *current* editor content, not the code that was in the editor when the request was sent. If the user edits the editor after sending, the diff base changes. Could persist the original code on the user message (the `code` field exists in the DB schema) and use that for a historical diff — but the current behavior is intuitive for the common "refactor → review diff" workflow.
+   288→- **Snippet edit**: no inline edit flow yet (only view/copy/insert/delete).
+   289→- **History sidebar auto-refresh**: still only reloads on open.
+   290→- **Suggested next features**: (a) conversation tags/folders for organization, (b) shareable read-only conversation link, (c) snippet inline edit, (d) word-level (intra-line) diff for finer granularity, (e) diff "Apply" button that replaces the editor content with the refactored code.
+   291→- Priority recommendation for next cron round: add a **diff "Apply" button** (replaces editor content with the refactored code — completes the refactor loop) and **conversation tags/folders** for organization.
+   292→
+   293→---
+   294→Task ID: 11 (cron round 6 — QA + diff Apply button + word-level diff + conversation tags)
+   295→Agent: webDevReview (cron job 340230)
+   296→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   297→
+   298→## 1. Current project status description / assessment
+   299→- CodeMentor AI is stable and feature-rich after prior rounds (true SDK streaming, command palette, prompt presets CRUD, per-code-block insert, pin/star + rename in history, snippets library, shortcuts, stats, dark mode, code diff view with unified/split modes).
+   300→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, refactor + diff flow + streaming + history all functional. App stable — green light for the recommended priorities (diff Apply button, conversation tags).
+   301→- Schema change this round: added `tags` field (comma-separated string) to Conversation model. Followed the documented restart procedure (db:push + dev server restart) so Turbopack picked up the new Prisma Client.
+   302→
+   303→## 2. Current goals / completed modifications / verification results
+   304→
+   305→### New features added
+   306→- **Diff "Apply" button** (`src/components/assistant/diff-view.tsx`): an emerald "Apply" button in the diff dialog header that replaces the editor's content with the refactored code, completing the refactor loop (review diff → apply). Wired via a new `onApply` prop in `DiffViewDialog`; the `DiffViewLauncher` passes `setSelectedCode` so the editor updates instantly. Disabled when the diff is identical. Shows "Applied" state + "Refactored code applied to editor" toast, then closes the dialog.
+   307→- **Word-level (intra-line) diff highlighting** (`computeWordDiff` in `src/lib/conversation-utils.ts`): a new LCS-based word diff that tokenizes two lines into words+whitespace and computes added/removed/unchanged segments. Rendered in Split view via a new `WordDiffContent` component — paired removed+added lines now highlight the exact changed words (rose for removed-side, emerald for added-side) within the line, not just the whole line. Much finer granularity for single-line changes.
+   308→- **Conversation tags** (`src/components/assistant/history-sidebar.tsx` + schema/API): full tag system for organizing conversations.
+   309→  - **Schema**: added `tags String @default("")` (comma-separated) to Conversation.
+   310→  - **PATCH `/api/conversations/[id]`**: now accepts `{tags}` in addition to `{title}` and `{pinned}`.
+   311→  - **Tag editor**: a Tag icon button in each history row's hover actions opens an inline input (prefilled with current tags); Enter or Check saves, Esc/X cancels. "Tags updated" toast.
+   312→  - **Tag display**: each conversation row shows its tags as violet pill chips (with Tag icon), up to 4 with a "+N" overflow.
+   313→  - **Tag filter bar**: below the search box, all unique tags across conversations render as clickable filter chips showing the count. Clicking filters the list to conversations with that tag; an active chip turns solid violet; a "Clear" button resets. Search now also matches tag text.
+   314→
+   315→### Styling polish
+   316→- Diff Apply button: emerald background (`bg-emerald-600 hover:bg-emerald-700`), CheckCheck icon, "Applied" transient label.
+   317→- Word diff highlights: rose-500/25 bg for removed words, emerald-500/25 bg for added words, bold text — only on the changed segments within a line.
+   318→- Tags: violet-500/10 pill chips with Tag icon, hover-violet filter chips that go solid violet when active, count badges.
+   319→- Tag editor: inline Input with violet Tag icon, Check/X confirm buttons matching the rename pattern.
+   320→
+   321→### Verification (agent-browser)
+   322→- Diff Apply: refactor flow → "View diff" → dialog opened with Apply button → clicked Apply → "Refactored code applied to editor" toast → editor content replaced with refactored code (verified `/**` JSDoc + typed function). ✅
+   323→- Split view word diff: switched to Split → side-by-side ORIGINAL vs REFACTORED columns with intra-line word highlights. ✅
+   324→- Tags: opened history → clicked Edit tags (Tag icon) → input appeared → typed "important, hooks" → Enter → "Tags updated" toast → tags displayed as violet chips on the conversation row. ✅
+   325→- Tag filter: "important 1" and "hooks 1" chips appeared in the filter bar → clicked "important" → list filtered to only the tagged conversation → "Clear" reset the filter. ✅
+   326→- Mobile (390x844): layout intact, sticky footer present. ✅
+   327→- Lint: `eslint .` clean. No browser errors. ✅
+   328→
+   329→## 3. Unresolved issues / risks + next-phase priorities
+   330→- **Diff original source**: still compares against the *current* editor content, not the code present when the request was sent. The `code` field exists on user messages in the DB — a future round could load the historical original for a truly accurate diff.
+   331→- **Snippet edit**: no inline edit flow yet (only view/copy/insert/delete).
+   332→- **History sidebar auto-refresh**: still only reloads on open.
+   333→- **Tag autocomplete**: tags are free-text; could suggest existing tags as the user types in the tag editor.
+   334→- **Suggested next features**: (a) shareable read-only conversation link, (b) snippet inline edit, (c) tag autocomplete + tag management dialog, (d) diff against historical original code, (e) per-message "Insert as new prompt" action.
+   335→- Priority recommendation for next cron round: **shareable read-only conversation link** (generates a URL that encodes the conversation for sharing) and **snippet inline edit** (reuses the inline-edit pattern now established across presets/history/tags).
+   336→
+   337→---
+   338→Task ID: 12 (cron round 7 — QA + shareable conversation link + snippet inline edit)
+   339→Agent: webDevReview (cron job 340230)
+   340→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   341→
+   342→## 1. Current project status description / assessment
+   343→- CodeMentor AI is stable and feature-rich after prior rounds (true SDK streaming, command palette, prompt presets CRUD, per-code-block insert, pin/star + rename + tags in history, snippets library, shortcuts, stats, dark mode, code diff view with unified/split + word-level + Apply).
+   344→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, streaming + snippets + all actions functional. App stable — green light for the recommended priorities (shareable read-only conversation link, snippet inline edit).
+   345→
+   346→## 2. Current goals / completed modifications / verification results
+   347→
+   348→### New features added
+   349→- **Shareable read-only conversation link** (`src/lib/share-utils.ts` + `src/components/assistant/share-dialog.tsx` + `src/app/share/page.tsx`): generates a URL that encodes the full conversation as URL-safe base64 in the URL hash fragment — no backend storage needed (the hash is never sent to the server).
+   350→  - **Share utils**: `encodeConversation`/`decodeConversation` (base64 JSON with URL-safe charset `-`/`_`), `buildShareUrl`, `readShareFromHash`.
+   351→  - **ShareDialog**: opened via a new "Share" button on the conversation toolbar + a command palette action. Shows a summary (request type + title + message count), the generated URL in a read-only field with a Copy button, and "Open in new tab". Warns when the URL exceeds 8000 chars (browser length limits). "Share link copied to clipboard" toast.
+   352→  - **`/share` route**: a dedicated read-only page that decodes the hash and renders the conversation with full Markdown + syntax-highlighted code blocks. Header shows the title + request type badge + "Open CodeMentor" link. A "🔒 Read-only shared view — this conversation is frozen in time" banner. Invalid/empty links show an error state with a back link. Includes a Copy button to copy the conversation text.
+   353→- **Snippet inline edit** (`src/components/assistant/snippets-library.tsx` + `PATCH /api/snippets/[id]`): full inline edit flow reusing the established pattern.
+   354→  - **PATCH endpoint**: updates title, code, language, and/or tags.
+   355→  - **Edit UI**: an Edit (Pencil) button in the snippet row hover actions + an "Edit" button in the expanded actions row opens an inline form with Title input, Language select, Tags input (comma-separated), and a Code textarea (resizable, monospace). Save (emerald) + Cancel buttons. "Snippet updated" toast on success; optimistic list update.
+   356→- **Store**: added `shareOpen`/`setShareOpen` to the Zustand store; Esc closes the share dialog (wired into the keyboard-shortcuts handler).
+   357→
+   358→### Styling polish
+   359→- Share dialog: Share2 icon header, conversation summary card with request-type badge, monospace URL field with Link2 icon, inline Copy button that turns emerald on success, amber warning for long URLs, "Open in new tab" outline button.
+   360→- Share page: gradient emerald logo, sticky header with backdrop blur, amber read-only banner, message bubbles matching the main app styling (user right-aligned primary-tinted, assistant left-aligned card), avatar circles with "You"/"AI" initials.
+   361→- Snippet edit form: labeled fields (Title/Language/Tags/Code) with uppercase tracking-wide labels, grid layout for language+tags, resizable code textarea with focus ring, emerald Save + ghost Cancel buttons.
+   362→
+   363→### Verification (agent-browser)
+   364→- Share dialog: sent a prompt → got response → clicked Share on toolbar → dialog opened with "Share Conversation" title, GENERATE badge, message count, and a base64 URL. ✅
+   365→- Share Copy: clicked Copy → "Share link copied to clipboard" toast + button showed "Copied". ✅
+   366→- Share page: navigated to `/share#<base64>` → page rendered the title "Shared conversation", the read-only banner, the user message, and the assistant response with a syntax-highlighted typescript code block. ✅
+   367→- Command palette: "Share conversation (read-only link)" action appears when searching "share". ✅
+   368→- Esc closes the share dialog. ✅
+   369→- Snippet edit: opened snippets library → expanded a snippet → clicked Edit → form appeared with Title/Language/Tags/Code prefilled → edited title to "My Edited Snippet" → clicked Save → "Snippet updated" toast + title updated in the list. ✅
+   370→- Mobile (390x844): layout intact, sticky footer present. ✅
+   371→- Lint: `eslint .` clean. No browser errors. ✅
+   372→
+   373→## 3. Unresolved issues / risks + next-phase priorities
+   374→- **Share URL length**: very long conversations produce long URLs (capped warning at 8000 chars). For huge conversations, Markdown export is the better path. Could add a "Copy as Markdown" fallback in the share dialog.
+   375→- **Share link revocation**: since the link is self-contained (no server storage), there's no way to revoke a shared link — it remains valid as long as someone has the URL. Acceptable for the read-only use case.
+   376→- **Diff original source**: still compares against the *current* editor content, not the code present when the request was sent.
+   377→- **History sidebar auto-refresh**: still only reloads on open.
+   378→- **Suggested next features**: (a) per-message "Insert as new prompt" action (copies a message's content as a new prompt), (b) tag autocomplete in the history tag editor, (c) diff against historical original code (use the `code` field on user messages), (d) "Copy as Markdown" fallback in the share dialog, (e) conversation search across message content (currently only title/type/tags).
+   379→- Priority recommendation for next cron round: **per-message "Insert as new prompt" action** (quick win — lets users branch a conversation from any message) and **tag autocomplete** in the history tag editor (reuses the allTags computation already in place).
+   380→
+   381→---
+   382→Task ID: 13 (cron round 8 — QA + insert-as-prompt + tag autocomplete + markdown copy + message search)
+   383→Agent: webDevReview (cron job 340230)
+   384→Task: Assess project status, run QA, fix bugs / add features, improve styling, update handover
+   385→
+   386→## 1. Current project status description / assessment
+   387→- CodeMentor AI is stable and feature-rich after prior rounds (true SDK streaming, command palette, prompt presets CRUD, per-code-block insert, pin/star + rename + tags in history, snippets library with edit, shortcuts, stats, dark mode, code diff view with unified/split + word-level + Apply, shareable read-only conversation link).
+   388→- QA pass this round (agent-browser, 1440x900 + 390x844): HTTP 200, no console errors, streaming + message actions + history all functional. App stable — green light for the recommended priorities (per-message insert-as-prompt, tag autocomplete).
+   389→- Fixed a regression mid-round: `useCallback` was missing from the history-sidebar imports (added when wiring the debounced search), causing an HTTP 500. Fixed by adding the import.
+   390→
+   391→## 2. Current goals / completed modifications / verification results
+   392→
+   393→### New features added
+   394→- **Per-message "Insert as new prompt" action** (`src/components/assistant/message-bubble.tsx`): a new CornerDownRight icon button in every message's feedback bar that copies the message content into the prompt input field — letting users branch a conversation from any message. For user messages it prefers the original `prompt` field (cleaner than the built context); for assistant messages it uses the full content. "Inserted as new prompt" toast confirms.
+   395→- **Tag autocomplete in history tag editor** (`src/components/assistant/history-sidebar.tsx`): the inline tag editor now shows a suggestions dropdown of existing tags (with counts) that prefix-match the token being typed (after the last comma). Clicking a suggestion appends it to the tag list (excluding duplicates). Dropdown shows up to 5 matches with a "Suggestions" header, violet Tag icons, and count badges.
+   396→- **"Copy as Markdown" in share dialog** (`src/components/assistant/share-dialog.tsx`): a new FileText "Markdown" button alongside "Open in new tab" that copies the conversation as formatted Markdown text (via `messagesToMarkdown`) — the recommended fallback for very long conversations that would exceed URL length limits. "Markdown copied to clipboard" toast + "Copied" button state.
+   397→- **Conversation search across message content** (`src/app/api/conversations/route.ts` + history sidebar): the list endpoint now accepts an optional `?q=<text>` query param that performs a Prisma `OR` search across title, tags, requestType, AND message `content`/`prompt` (via a `messages: { some: { OR: [...] } }` relation filter). The history sidebar now does a debounced (300ms) server-side fetch when the search query changes, so users can find conversations by words inside the messages — not just the title. Empty state now distinguishes "No conversations yet" vs "No matches for '...'" with a "Searched titles, tags, and message content" hint.
+   398→
+   399→### Styling polish
+   400→- Insert-as-prompt button: CornerDownRight icon, hover-accent, tooltips.
+
+[showing lines 1-400 of 504; use offset=401 with limit to continue reading]

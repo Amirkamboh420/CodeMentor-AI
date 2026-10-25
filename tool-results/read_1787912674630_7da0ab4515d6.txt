@@ -1,0 +1,1843 @@
+     1→"use client";
+     2→
+     3→import * as React from "react";
+     4→import Link from "next/link";
+     5→import { useParams, useRouter } from "next/navigation";
+     6→import { motion } from "framer-motion";
+     7→import { toast } from "sonner";
+     8→import {
+     9→  ArrowLeft,
+    10→  ChevronRight,
+    11→  Loader2,
+    12→  Folder,
+    13→  FileCode2,
+    14→  Code,
+    15→  GitBranch,
+    16→  Github,
+    17→  GitCommit,
+    18→  Hammer,
+    19→  CheckCircle2,
+    20→  Rocket,
+    21→  Globe,
+    22→  Settings as SettingsIcon,
+    23→  ExternalLink,
+    24→  AlertCircle,
+    25→  Plus,
+    26→  Terminal,
+    27→  Files,
+    28→  Pencil,
+    29→  FolderOpen,
+    30→  X,
+    31→  Check,
+    32→  Zap,
+    33→  Cloud,
+    34→  RefreshCw,
+    35→} from "lucide-react";
+    36→
+    37→import { AppLayout } from "@/components/layout/app-layout";
+    38→import { Button } from "@/components/ui/button";
+    39→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+    40→import { Badge } from "@/components/ui/badge";
+    41→import { Input } from "@/components/ui/input";
+    42→import { Label } from "@/components/ui/label";
+    43→import { Textarea } from "@/components/ui/textarea";
+    44→import {
+    45→  Dialog,
+    46→  DialogContent,
+    47→  DialogDescription,
+    48→  DialogFooter,
+    49→  DialogHeader,
+    50→  DialogTitle,
+    51→} from "@/components/ui/dialog";
+    52→import {
+    53→  Tooltip,
+    54→  TooltipContent,
+    55→  TooltipProvider,
+    56→  TooltipTrigger,
+    57→} from "@/components/ui/tooltip";
+    58→import {
+    59→  Collapsible,
+    60→  CollapsibleContent,
+    61→  CollapsibleTrigger,
+    62→} from "@/components/ui/collapsible";
+    63→import { Skeleton } from "@/components/ui/skeleton";
+    64→import { cn } from "@/lib/utils";
+    65→import {
+    66→  statusBadgeClass,
+    67→  statusLabel,
+    68→  formatRelative,
+    69→  frameworkMeta,
+    70→} from "@/app/projects/page";
+    71→
+    72→// ---------------------------------------------------------------------------
+    73→// Types
+    74→// ---------------------------------------------------------------------------
+    75→
+    76→type BuildRun = {
+    77→  id: string;
+    78→  status: string;
+    79→  log: string;
+    80→  duration: number;
+    81→  createdAt: string;
+    82→};
+    83→
+    84→type ProjectDetail = {
+    85→  id: string;
+    86→  name: string;
+    87→  description: string;
+    88→  framework: string;
+    89→  status: string;
+    90→  localPath: string | null;
+    91→  repoUrl: string | null;
+    92→  repoFullName: string | null;
+    93→  defaultBranch: string;
+    94→  lastBuildAt: string | null;
+    95→  lastDeployUrl: string | null;
+    96→  buildCommand: string;
+    97→  outputDir: string;
+    98→  envVars: string;
+    99→  createdAt: string;
+   100→  updatedAt: string;
+   101→  builds: BuildRun[];
+   102→  githubConnected: boolean;
+   103→  githubRepo: string | null;
+   104→  githubBranch: string | null;
+   105→  vercelConnected: boolean;
+   106→  vercelProjectName: string | null;
+   107→  nenoConnected: boolean;
+   108→  nenoEnvironment: string | null;
+   109→};
+   110→
+   111→// ---------------------------------------------------------------------------
+   112→// Page wrapper (Suspense-free param read; useParams is safe in client)
+   113→// ---------------------------------------------------------------------------
+   114→
+   115→export default function ProjectWorkspacePage() {
+   116→  return (
+   117→    <AppLayout>
+   118→      <Workspace />
+   119→    </AppLayout>
+   120→  );
+   121→}
+   122→
+   123→function Workspace() {
+   124→  const params = useParams<{ id: string }>();
+   125→  const id = params?.id;
+   126→  const router = useRouter();
+   127→
+   128→  const [project, setProject] = React.useState<ProjectDetail | null>(null);
+   129→  const [loading, setLoading] = React.useState(true);
+   130→  const [error, setError] = React.useState<string | null>(null);
+   131→
+   132→  const load = React.useCallback(async () => {
+   133→    if (!id) return;
+   134→    try {
+   135→      const res = await fetch(`/api/projects/${id}`, { cache: "no-store" });
+   136→      if (!res.ok) {
+   137→        const err = await res.json().catch(() => ({}));
+   138→        throw new Error(err.error || `HTTP ${res.status}`);
+   139→      }
+   140→      const data = await res.json();
+   141→      setProject(data.project);
+   142→      setError(null);
+   143→    } catch (err) {
+   144→      setError((err as Error).message);
+   145→    } finally {
+   146→      setLoading(false);
+   147→    }
+   148→  }, [id]);
+   149→
+   150→  React.useEffect(() => {
+   151→    load();
+   152→  }, [load]);
+   153→
+   154→  if (loading) {
+   155→    return (
+   156→      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+   157→        <WorkspaceSkeleton />
+   158→      </div>
+   159→    );
+   160→  }
+   161→
+   162→  if (error || !project) {
+   163→    return (
+   164→      <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-12 sm:px-6 lg:px-8">
+   165→        <Card className="border-rose-500/30 bg-rose-500/5">
+   166→          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+   167→            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10 text-rose-600">
+   168→              <AlertCircle className="h-6 w-6" />
+   169→            </div>
+   170→            <h2 className="text-lg font-semibold">Could not load project</h2>
+   171→            <p className="max-w-md text-sm text-muted-foreground">
+   172→              {error || "Project not found, or you don't have access to it."}
+   173→            </p>
+   174→            <Button variant="outline" onClick={() => router.push("/projects")}>
+   175→              <ArrowLeft className="h-4 w-4" />
+   176→              Back to Projects
+   177→            </Button>
+   178→          </CardContent>
+   179→        </Card>
+   180→      </div>
+   181→    );
+   182→  }
+   183→
+   184→  return (
+   185→    <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+   186→      <ProjectWorkspace project={project} reload={load} setProject={setProject} />
+   187→    </div>
+   188→  );
+   189→}
+   190→
+   191→// ---------------------------------------------------------------------------
+   192→// Workspace skeleton
+   193→// ---------------------------------------------------------------------------
+   194→
+   195→function WorkspaceSkeleton() {
+   196→  return (
+   197→    <div className="space-y-4">
+   198→      <div className="flex items-center gap-3">
+   199→        <Skeleton className="h-9 w-9 rounded-xl" />
+   200→        <Skeleton className="h-6 w-48" />
+   201→        <Skeleton className="ml-auto h-9 w-32" />
+   202→      </div>
+   203→      <Skeleton className="h-20 w-full" />
+   204→      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+   205→        {Array.from({ length: 12 }).map((_, i) => (
+   206→          <Skeleton key={i} className="h-24 w-full" />
+   207→        ))}
+   208→      </div>
+   209→      <Skeleton className="h-64 w-full" />
+   210→    </div>
+   211→  );
+   212→}
+   213→
+   214→// ---------------------------------------------------------------------------
+   215→// Main workspace
+   216→// ---------------------------------------------------------------------------
+   217→
+   218→function ProjectWorkspace({
+   219→  project,
+   220→  reload,
+   221→  setProject,
+   222→}: {
+   223→  project: ProjectDetail;
+   224→  reload: () => Promise<void>;
+   225→  setProject: React.Dispatch<React.SetStateAction<ProjectDetail | null>>;
+   226→}) {
+   227→  const router = useRouter();
+   228→  const [settingsOpen, setSettingsOpen] = React.useState(false);
+   229→  const [vscodePathOpen, setVscodePathOpen] = React.useState(false);
+   230→  const [commitOpen, setCommitOpen] = React.useState(false);
+   231→  const [githubOpen, setGithubOpen] = React.useState(false);
+   232→  const [vercelOpen, setVercelOpen] = React.useState(false);
+   233→  const [nenoOpen, setNenoOpen] = React.useState(false);
+   234→  const [buildLogOpen, setBuildLogOpen] = React.useState(false);
+   235→  const [deployOpen, setDeployOpen] = React.useState(false);
+   236→  const [logPanelOpen, setLogPanelOpen] = React.useState(true);
+   237→  const [busyAction, setBusyAction] = React.useState<string | null>(null);
+   238→
+   239→  // Local copy of the project name for inline editing.
+   240→  const [editingName, setEditingName] = React.useState(false);
+   241→  const [nameDraft, setNameDraft] = React.useState(project.name);
+   242→
+   243→  React.useEffect(() => setNameDraft(project.name), [project.name]);
+   244→
+   245→  const updateProject = (patch: Partial<ProjectDetail>) =>
+   246→    setProject((prev) => (prev ? { ...prev, ...patch } : prev));
+   247→
+   248→  // ---------------------- VS Code deep-link ----------------------
+   249→  const openInVSCode = () => {
+   250→    if (!project.localPath) {
+   251→      setVscodePathOpen(true);
+   252→      return;
+   253→    }
+   254→    const url = `vscode://file/${encodeURIComponent(project.localPath).replace(/%2F/g, "/").replace(/%3A/g, ":")}`;
+   255→    toast.info("Opening VS Code...", {
+   256→      description: `Launching vscode:// with folder ${project.localPath}`,
+   257→    });
+   258→    // Use a hidden anchor to trigger the protocol handler.
+   259→    const a = document.createElement("a");
+   260→    a.href = url;
+   261→    a.style.display = "none";
+   262→    document.body.appendChild(a);
+   263→    a.click();
+   264→    document.body.removeChild(a);
+   265→  };
+   266→
+   267→  // ---------------------- Build ----------------------
+   268→  const triggerBuild = async () => {
+   269→    setBusyAction("build");
+   270→    try {
+   271→      const res = await fetch(`/api/projects/${project.id}/build`, {
+   272→        method: "POST",
+   273→      });
+   274→      if (!res.ok) {
+   275→        const err = await res.json().catch(() => ({}));
+   276→        throw new Error(err.error || "Build failed to start");
+   277→      }
+   278→      const data = await res.json();
+   279→      // Optimistic update — show building state.
+   280→      updateProject({
+   281→        status: "ready", // post-build status from server
+   282→        lastBuildAt: new Date().toISOString(),
+   283→        builds: [data.buildRun, ...project.builds].slice(0, 10),
+   284→      });
+   285→      toast.success(
+   286→        data.buildRun.status === "success"
+   287→          ? "Build succeeded"
+   288→          : "Build failed",
+   289→        {
+   290→          description:
+   291→            data.buildRun.status === "success"
+   292→              ? `Completed in ${(data.buildRun.duration / 1000).toFixed(2)}s`
+   293→              : "Check the build log for details.",
+   294→        }
+   295→      );
+   296→      setLogPanelOpen(true);
+   297→      await reload();
+   298→    } catch (err) {
+   299→      toast.error("Build failed", { description: (err as Error).message });
+   300→    } finally {
+   301→      setBusyAction(null);
+   302→    }
+   303→  };
+   304→
+   305→  // ---------------------- Push to GitHub ----------------------
+   306→  const pushToGitHub = async () => {
+   307→    setBusyAction("push");
+   308→    try {
+   309→      // Simulate a push.
+   310→      await new Promise((r) => setTimeout(r, 1500));
+   311→      updateProject({ status: "github_synced" });
+   312→      toast.success("Pushed to GitHub", {
+   313→        description: project.githubRepo || "Changes pushed to default branch.",
+   314→      });
+   315→    } catch (err) {
+   316→      toast.error("Push failed", { description: (err as Error).message });
+   317→    } finally {
+   318→      setBusyAction(null);
+   319→    }
+   320→  };
+   321→
+   322→  // ---------------------- Deploy ----------------------
+   323→  const triggerDeploy = async () => {
+   324→    setBusyAction("deploy");
+   325→    try {
+   326→      // Simulate deployment.
+   327→      updateProject({ status: "deploying" });
+   328→      await new Promise((r) => setTimeout(r, 2000));
+   329→      const url = `https://${project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}.vercel.app`;
+   330→      // Persist lastDeployUrl.
+   331→      await fetch(`/api/projects/${project.id}`, {
+   332→        method: "PATCH",
+   333→        headers: { "Content-Type": "application/json" },
+   334→        body: JSON.stringify({ lastDeployUrl: url, status: "live" }),
+   335→      });
+   336→      updateProject({ status: "live", lastDeployUrl: url });
+   337→      toast.success("Deployment live!", { description: url });
+   338→    } catch (err) {
+   339→      toast.error("Deploy failed", { description: (err as Error).message });
+   340→      updateProject({ status: "error" });
+   341→    } finally {
+   342→      setBusyAction(null);
+   343→    }
+   344→  };
+   345→
+   346→  // ---------------------- Save name ----------------------
+   347→  const saveName = async () => {
+   348→    if (!nameDraft.trim() || nameDraft === project.name) {
+   349→      setEditingName(false);
+   350→      return;
+   351→    }
+   352→    setBusyAction("rename");
+   353→    try {
+   354→      const res = await fetch(`/api/projects/${project.id}`, {
+   355→        method: "PATCH",
+   356→        headers: { "Content-Type": "application/json" },
+   357→        body: JSON.stringify({ name: nameDraft.trim() }),
+   358→      });
+   359→      if (!res.ok) throw new Error("Failed to rename");
+   360→      updateProject({ name: nameDraft.trim() });
+   361→      toast.success("Project renamed");
+   362→    } catch (err) {
+   363→      toast.error("Rename failed", { description: (err as Error).message });
+   364→      setNameDraft(project.name);
+   365→    } finally {
+   366→      setBusyAction(null);
+   367→      setEditingName(false);
+   368→    }
+   369→  };
+   370→
+   371→  // ---------------------- Delete ----------------------
+   372→  const handleDelete = async () => {
+   373→    setBusyAction("delete");
+   374→    try {
+   375→      const res = await fetch(`/api/projects/${project.id}`, {
+   376→        method: "DELETE",
+   377→      });
+   378→      if (!res.ok) throw new Error("Failed to delete");
+   379→      toast.success("Project deleted");
+   380→      router.push("/projects");
+   381→    } catch (err) {
+   382→      toast.error("Delete failed", { description: (err as Error).message });
+   383→      setBusyAction(null);
+   384→    }
+   385→  };
+   386→
+   387→  const latestBuild = project.builds[0] || null;
+   388→  const meta = frameworkMeta(project.framework);
+   389→
+   390→  return (
+   391→    <div className="flex flex-col gap-5">
+   392→      {/* Back link */}
+   393→      <Link
+   394→        href="/projects"
+   395→        className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+   396→      >
+   397→        <ArrowLeft className="h-3.5 w-3.5" />
+   398→        All projects
+   399→      </Link>
+   400→
+   401→      {/* ---------- Top bar ---------- */}
+   402→      <Card className="overflow-hidden py-0">
+   403→        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+   404→          <div className="flex min-w-0 items-center gap-3">
+   405→            <div
+   406→              className={cn(
+   407→                "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-bold shadow-sm",
+   408→                meta.color
+   409→              )}
+   410→              aria-hidden
+   411→            >
+   412→              {meta.icon}
+   413→            </div>
+   414→            <div className="min-w-0">
+   415→              <div className="flex items-center gap-2">
+   416→                {editingName ? (
+   417→                  <div className="flex items-center gap-2">
+   418→                    <Input
+   419→                      value={nameDraft}
+   420→                      onChange={(e) => setNameDraft(e.target.value)}
+   421→                      className="h-7 w-48 text-base font-semibold"
+   422→                      autoFocus
+   423→                      onKeyDown={(e) => {
+   424→                        if (e.key === "Enter") saveName();
+   425→                        if (e.key === "Escape") {
+   426→                          setNameDraft(project.name);
+   427→                          setEditingName(false);
+   428→                        }
+   429→                      }}
+   430→                    />
+   431→                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={saveName}>
+   432→                      <Check className="h-3.5 w-3.5" />
+   433→                    </Button>
+   434→                    <Button
+   435→                      size="icon"
+   436→                      variant="ghost"
+   437→                      className="h-7 w-7"
+   438→                      onClick={() => {
+   439→                        setNameDraft(project.name);
+   440→                        setEditingName(false);
+   441→                      }}
+   442→                    >
+   443→                      <X className="h-3.5 w-3.5" />
+   444→                    </Button>
+   445→                  </div>
+   446→                ) : (
+   447→                  <>
+   448→                    <h1 className="truncate text-xl font-semibold tracking-tight">
+   449→                      {project.name}
+   450→                    </h1>
+   451→                    <TooltipProvider>
+   452→                      <Tooltip>
+   453→                        <TooltipTrigger asChild>
+   454→                          <button
+   455→                            onClick={() => setEditingName(true)}
+   456→                            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+   457→                            aria-label="Rename project"
+   458→                          >
+   459→                            <Pencil className="h-3.5 w-3.5" />
+   460→                          </button>
+   461→                        </TooltipTrigger>
+   462→                        <TooltipContent>Rename</TooltipContent>
+   463→                      </Tooltip>
+   464→                    </TooltipProvider>
+   465→                  </>
+   466→                )}
+   467→              </div>
+   468→              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+   469→                <Badge variant="outline" className="h-5 text-[10px]">
+   470→                  {meta.label}
+   471→                </Badge>
+   472→                <Badge
+   473→                  variant="outline"
+   474→                  className={cn("h-5 text-[10px]", statusBadgeClass(project.status))}
+   475→                >
+   476→                  {project.status === "live" && (
+   477→                    <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+   478→                  )}
+   479→                  {statusLabel(project.status)}
+   480→                </Badge>
+   481→                {project.localPath && (
+   482→                  <span className="inline-flex items-center gap-1 font-mono">
+   483→                    <Folder className="h-3 w-3" />
+   484→                    {project.localPath}
+   485→                  </span>
+   486→                )}
+   487→                <span>· Updated {formatRelative(project.updatedAt)}</span>
+   488→              </div>
+   489→            </div>
+   490→          </div>
+   491→
+   492→          <div className="flex flex-wrap items-center gap-2">
+   493→            <TooltipProvider>
+   494→              <Tooltip>
+   495→                <TooltipTrigger asChild>
+   496→                  <Button onClick={openInVSCode} variant="default">
+   497→                    <Code className="h-4 w-4" />
+   498→                    Open in VS Code
+   499→                  </Button>
+   500→                </TooltipTrigger>
+   501→                <TooltipContent>
+   502→                  {project.localPath
+   503→                    ? `vscode://file/${project.localPath}`
+   504→                    : "Set your local path first"}
+   505→                </TooltipContent>
+   506→              </Tooltip>
+   507→            </TooltipProvider>
+   508→            <Button variant="outline" onClick={() => setSettingsOpen(true)}>
+   509→              <SettingsIcon className="h-4 w-4" />
+   510→              Settings
+   511→            </Button>
+   512→          </div>
+   513→        </CardContent>
+   514→      </Card>
+   515→
+   516→      {/* ---------- Status flow stepper ---------- */}
+   517→      <StatusFlowStepper status={project.status} />
+   518→
+   519→      {/* ---------- Action grid ---------- */}
+   520→      <div>
+   521→        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
+   522→          Lifecycle actions
+   523→        </h2>
+   524→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+   525→          <ActionButton
+   526→            icon={FolderOpen}
+   527→            label="Open Local Folder"
+   528→            sublabel={project.localPath ? "Path set" : "Set local path"}
+   529→            onClick={() => setVscodePathOpen(true)}
+   530→          />
+   531→          <ActionButton
+   532→            icon={Code}
+   533→            label="Open in VS Code"
+   534→            sublabel={project.localPath ? "Deep-link ready" : "Set local path"}
+   535→            disabled={!project.localPath}
+   536→            onClick={openInVSCode}
+   537→            accent="blue"
+   538→          />
+   539→          <ActionButton
+   540→            icon={Github}
+   541→            label="Connect GitHub"
+   542→            sublabel={project.githubConnected ? "Connected" : "Not connected"}
+   543→            connected={project.githubConnected}
+   544→            onClick={() => setGithubOpen(true)}
+   545→          />
+   546→          <ActionButton
+   547→            icon={GitCommit}
+   548→            label="Commit Changes"
+   549→            sublabel="Write a commit"
+   550→            onClick={() => setCommitOpen(true)}
+   551→          />
+   552→          <ActionButton
+   553→            icon={GitBranch}
+   554→            label="Push to GitHub"
+   555→            sublabel={project.githubConnected ? "Push to remote" : "GitHub required"}
+   556→            disabled={!project.githubConnected}
+   557→            loading={busyAction === "push"}
+   558→            onClick={pushToGitHub}
+   559→          />
+   560→          <ActionButton
+   561→            icon={Zap}
+   562→            label="Connect Neno"
+   563→            sublabel={project.nenoConnected ? "Connected" : "Not connected"}
+   564→            connected={project.nenoConnected}
+   565→            onClick={() => setNenoOpen(true)}
+   566→          />
+   567→          <ActionButton
+   568→            icon={Hammer}
+   569→            label="Build Project"
+   570→            sublabel={latestBuild ? `Last: ${statusLabel(latestBuild.status)}` : "Never built"}
+   571→            loading={busyAction === "build"}
+   572→            onClick={triggerBuild}
+   573→            accent="amber"
+   574→          />
+   575→          <ActionButton
+   576→            icon={Rocket}
+   577→            label="Connect Vercel"
+   578→            sublabel={project.vercelConnected ? "Connected" : "Not connected"}
+   579→            connected={project.vercelConnected}
+   580→            onClick={() => setVercelOpen(true)}
+   581→          />
+   582→          <ActionButton
+   583→            icon={Cloud}
+   584→            label="Deploy to Vercel"
+   585→            sublabel={
+   586→              project.vercelConnected
+   587→                ? project.lastDeployUrl
+   588→                  ? "Re-deploy"
+   589→                  : "Deploy now"
+   590→                : "Vercel required"
+   591→            }
+   592→            disabled={!project.vercelConnected}
+   593→            loading={busyAction === "deploy"}
+   594→            onClick={triggerDeploy}
+   595→            accent="indigo"
+   596→          />
+   597→          <ActionButton
+   598→            icon={Terminal}
+   599→            label="View Build Logs"
+   600→            sublabel={latestBuild ? formatRelative(latestBuild.createdAt) : "No builds yet"}
+   601→            disabled={!latestBuild}
+   602→            onClick={() => setBuildLogOpen(true)}
+   603→          />
+   604→          <ActionButton
+   605→            icon={Globe}
+   606→            label="Deployment Status"
+   607→            sublabel={project.lastDeployUrl ? "Live" : "Not deployed"}
+   608→            onClick={() => setDeployOpen(true)}
+   609→          />
+   610→          <ActionButton
+   611→            icon={ExternalLink}
+   612→            label="Open Live Website"
+   613→            sublabel={project.lastDeployUrl ? project.lastDeployUrl.replace(/^https?:\/\//, "") : "Not deployed"}
+   614→            disabled={!project.lastDeployUrl}
+   615→            onClick={() => {
+   616→              if (project.lastDeployUrl) {
+   617→                window.open(project.lastDeployUrl, "_blank", "noopener,noreferrer");
+   618→              }
+   619→            }}
+   620→            accent="emerald"
+   621→          />
+   622→        </div>
+   623→      </div>
+   624→
+   625→      {/* ---------- Bottom row: file browser + log panel ---------- */}
+   626→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   627→        <FileBrowser framework={project.framework} projectName={project.name} />
+   628→        <BuildLogPanel
+   629→          open={logPanelOpen}
+   630→          onOpenChange={setLogPanelOpen}
+   631→          build={latestBuild}
+   632→          onTriggerBuild={triggerBuild}
+   633→          building={busyAction === "build"}
+   634→        />
+   635→      </div>
+   636→
+   637→      {/* ---------- Dialogs ---------- */}
+   638→      <SettingsDialog
+   639→        open={settingsOpen}
+   640→        onOpenChange={setSettingsOpen}
+   641→        project={project}
+   642→        onSaved={(patch) => {
+   643→          updateProject(patch);
+   644→        }}
+   645→        onDelete={handleDelete}
+   646→        deleting={busyAction === "delete"}
+   647→      />
+   648→
+   649→      <VscodePathDialog
+   650→        open={vscodePathOpen}
+   651→        onOpenChange={setVscodePathOpen}
+   652→        project={project}
+   653→        onSaved={(localPath) => updateProject({ localPath })}
+   654→      />
+   655→
+   656→      <CommitDialog
+   657→        open={commitOpen}
+   658→        onOpenChange={setCommitOpen}
+   659→        project={project}
+   660→        onCommitted={() => updateProject({ status: "changes_detected" })}
+   661→      />
+   662→
+   663→      <ConnectDialog
+   664→        kind="github"
+   665→        open={githubOpen}
+   666→        onOpenChange={setGithubOpen}
+   667→        project={project}
+   668→        onConnected={() =>
+   669→          updateProject({
+   670→            githubConnected: true,
+   671→            githubRepo: `${project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}/repo`,
+   672→            githubBranch: project.defaultBranch,
+   673→            repoFullName: `${project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}/repo`,
+   674→            repoUrl: `https://github.com/${project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}/repo`,
+   675→            status: project.status === "development" ? "changes_detected" : project.status,
+   676→          })
+   677→        }
+   678→      />
+   679→      <ConnectDialog
+   680→        kind="vercel"
+   681→        open={vercelOpen}
+   682→        onOpenChange={setVercelOpen}
+   683→        project={project}
+   684→        onConnected={() =>
+   685→          updateProject({
+   686→            vercelConnected: true,
+   687→            vercelProjectName: project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+   688→          })
+   689→        }
+   690→      />
+   691→      <ConnectDialog
+   692→        kind="neno"
+   693→        open={nenoOpen}
+   694→        onOpenChange={setNenoOpen}
+   695→        project={project}
+   696→        onConnected={() =>
+   697→          updateProject({
+   698→            nenoConnected: true,
+   699→            nenoEnvironment: "production",
+   700→          })
+   701→        }
+   702→      />
+   703→
+   704→      <BuildLogDialog
+   705→        open={buildLogOpen}
+   706→        onOpenChange={setBuildLogOpen}
+   707→        builds={project.builds}
+   708→        onTriggerBuild={triggerBuild}
+   709→        building={busyAction === "build"}
+   710→      />
+   711→
+   712→      <DeployStatusDialog
+   713→        open={deployOpen}
+   714→        onOpenChange={setDeployOpen}
+   715→        project={project}
+   716→        onRedeploy={triggerDeploy}
+   717→        deploying={busyAction === "deploy"}
+   718→      />
+   719→    </div>
+   720→  );
+   721→}
+   722→
+   723→// ---------------------------------------------------------------------------
+   724→// Status flow stepper
+   725→// ---------------------------------------------------------------------------
+   726→
+   727→const STAGES = [
+   728→  { key: "project", label: "Project", icon: Folder, status: "development" },
+   729→  { key: "development", label: "Development", icon: Code, status: "development" },
+   730→  { key: "changes", label: "Changes Detected", icon: GitBranch, status: "changes_detected" },
+   731→  { key: "github", label: "GitHub Sync", icon: Github, status: "github_synced" },
+   732→  { key: "build", label: "Build", icon: Hammer, status: "building" },
+   733→  { key: "ready", label: "Ready", icon: CheckCircle2, status: "ready" },
+   734→  { key: "deploying", label: "Deployment", icon: Rocket, status: "deploying" },
+   735→  { key: "live", label: "Live", icon: Globe, status: "live" },
+   736→];
+   737→
+   738→const STATUS_ORDER: Record<string, number> = {
+   739→  development: 1,
+   740→  changes_detected: 2,
+   741→  github_synced: 3,
+   742→  building: 4,
+   743→  ready: 5,
+   744→  deploying: 6,
+   745→  live: 7,
+   746→  error: 0,
+   747→};
+   748→
+   749→function StatusFlowStepper({ status }: { status: string }) {
+   750→  const currentIdx = STATUS_ORDER[status] ?? 0;
+   751→  return (
+   752→    <Card className="py-0">
+   753→      <CardContent className="overflow-x-auto p-4">
+   754→        <div className="flex min-w-max items-center gap-1">
+   755→          {STAGES.map((stage, i) => {
+   756→            const stageIdx = i + 1; // project = 1
+   757→            const isDone = stageIdx < currentIdx;
+   758→            const isActive = stageIdx === currentIdx;
+   759→            const isPending = stageIdx > currentIdx;
+   760→            const Icon = stage.icon;
+   761→            return (
+   762→              <React.Fragment key={stage.key}>
+   763→                <div className="flex flex-col items-center gap-1.5">
+   764→                  <div
+   765→                    className={cn(
+   766→                      "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all",
+   767→                      isDone && "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+   768→                      isActive && "border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 animate-pulse",
+   769→                      isPending && "border-border bg-muted text-muted-foreground"
+   770→                    )}
+   771→                  >
+   772→                    <Icon className="h-4 w-4" />
+   773→                  </div>
+   774→                  <span
+   775→                    className={cn(
+   776→                      "text-[10px] font-medium whitespace-nowrap",
+   777→                      isActive && "text-blue-600 dark:text-blue-400",
+   778→                      isDone && "text-emerald-600 dark:text-emerald-400",
+   779→                      isPending && "text-muted-foreground"
+   780→                    )}
+   781→                  >
+   782→                    {stage.label}
+   783→                  </span>
+   784→                </div>
+   785→                {i < STAGES.length - 1 && (
+   786→                  <div
+   787→                    className={cn(
+   788→                      "mb-5 h-0.5 w-8 shrink-0 rounded-full transition-colors sm:w-12",
+   789→                      i + 1 < currentIdx
+   790→                        ? "bg-emerald-500/60"
+   791→                        : "bg-border"
+   792→                    )}
+   793→                  />
+   794→                )}
+   795→              </React.Fragment>
+   796→            );
+   797→          })}
+   798→        </div>
+   799→      </CardContent>
+   800→    </Card>
+   801→  );
+   802→}
+   803→
+   804→// ---------------------------------------------------------------------------
+   805→// Action button
+   806→// ---------------------------------------------------------------------------
+   807→
+   808→type AccentColor = "default" | "blue" | "amber" | "indigo" | "emerald";
+   809→
+   810→function ActionButton({
+   811→  icon: Icon,
+   812→  label,
+   813→  sublabel,
+   814→  onClick,
+   815→  disabled,
+   816→  loading,
+   817→  connected,
+   818→  accent = "default",
+   819→}: {
+   820→  icon: React.ComponentType<{ className?: string }>;
+   821→  label: string;
+   822→  sublabel?: string;
+   823→  onClick: () => void;
+   824→  disabled?: boolean;
+   825→  loading?: boolean;
+   826→  connected?: boolean;
+   827→  accent?: AccentColor;
+   828→}) {
+   829→  const accentClasses: Record<AccentColor, string> = {
+   830→    default: "bg-muted text-foreground",
+   831→    blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+   832→    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+   833→    indigo: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+   834→    emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+   835→  };
+   836→  return (
+   837→    <motion.button
+   838→      whileHover={disabled || loading ? undefined : { y: -2 }}
+   839→      whileTap={disabled || loading ? undefined : { scale: 0.97 }}
+   840→      onClick={onClick}
+   841→      disabled={disabled || loading}
+   842→      className={cn(
+   843→        "group relative flex h-full w-full flex-col items-start gap-2 rounded-xl border bg-card p-3 text-left shadow-sm transition-all",
+   844→        "hover:border-primary/30 hover:shadow-md",
+   845→        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:shadow-sm"
+   846→      )}
+   847→    >
+   848→      <div className="flex w-full items-center justify-between">
+   849→        <div
+   850→          className={cn(
+   851→            "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+   852→            accentClasses[accent]
+   853→          )}
+   854→        >
+   855→          {loading ? (
+   856→            <Loader2 className="h-4 w-4 animate-spin" />
+   857→          ) : (
+   858→            <Icon className="h-4 w-4" />
+   859→          )}
+   860→        </div>
+   861→        {connected && (
+   862→          <span className="flex h-2 w-2 rounded-full bg-emerald-500" title="Connected" />
+   863→        )}
+   864→      </div>
+   865→      <div className="min-w-0 flex-1">
+   866→        <p className="truncate text-sm font-medium">{label}</p>
+   867→        {sublabel && (
+   868→          <p className="truncate text-[11px] text-muted-foreground">{sublabel}</p>
+   869→        )}
+   870→      </div>
+   871→    </motion.button>
+   872→  );
+   873→}
+   874→
+   875→// ---------------------------------------------------------------------------
+   876→// File browser (mock)
+   877→// ---------------------------------------------------------------------------
+   878→
+   879→type FileNode = {
+   880→  name: string;
+   881→  type: "dir" | "file";
+   882→  language?: string;
+   883→  content?: string;
+   884→  children?: FileNode[];
+   885→};
+   886→
+   887→function buildMockTree(projectName: string, framework: string): FileNode {
+   888→  const slug = projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+   889→  const isNext = framework === "nextjs";
+   890→  return {
+   891→    name: "root",
+   892→    type: "dir",
+   893→    children: [
+   894→      {
+   895→        name: "src",
+   896→        type: "dir",
+   897→        children: [
+   898→          {
+   899→            name: "app",
+   900→            type: "dir",
+   901→            children: [
+   902→              {
+   903→                name: "page.tsx",
+   904→                type: "file",
+   905→                language: "tsx",
+   906→                content: `export default function Page() {\n  return (\n    <main className="p-8">\n      <h1 className="text-2xl font-bold">${projectName}</h1>\n      <p>Welcome to your new ${framework} project.</p>\n    </main>\n  );\n}`,
+   907→              },
+   908→              { name: "layout.tsx", type: "file", language: "tsx", content: `export const metadata = { title: "${projectName}" };\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <body>{children}</body>\n    </html>\n  );\n}` },
+   909→            ],
+   910→          },
+   911→          {
+   912→            name: "components",
+   913→            type: "dir",
+   914→            children: [
+   915→              { name: "Navbar.tsx", type: "file", language: "tsx", content: `export function Navbar() {\n  return <nav className="border-b p-4">${projectName}</nav>;\n}` },
+   916→              { name: "Footer.tsx", type: "file", language: "tsx", content: `export function Footer() {\n  return <footer className="p-4 text-sm text-muted">&copy; ${new Date().getFullYear()} ${projectName}</footer>;\n}` },
+   917→            ],
+   918→          },
+   919→          {
+   920→            name: "lib",
+   921→            type: "dir",
+   922→            children: [
+   923→              { name: "utils.ts", type: "file", language: "ts", content: `export function cn(...c: (string | undefined | false)[]) {\n  return c.filter(Boolean).join(" ");\n}` },
+   924→            ],
+   925→          },
+   926→        ],
+   927→      },
+   928→      {
+   929→        name: "public",
+   930→        type: "dir",
+   931→        children: [
+   932→          { name: "logo.svg", type: "file", content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#10b981"/></svg>` },
+   933→        ],
+   934→      },
+   935→      {
+   936→        name: "package.json",
+   937→        type: "file",
+   938→        language: "json",
+   939→        content: `{\n  "name": "${slug}",\n  "version": "0.1.0",\n  "scripts": {\n    "dev": "${isNext ? "next dev" : "vite"}",\n    "build": "${isNext ? "next build" : "vite build"}",\n    "start": "${isNext ? "next start" : "vite preview"}"\n  }\n}`,
+   940→      },
+   941→      { name: "tsconfig.json", type: "file", language: "json", content: `{\n  "compilerOptions": {\n    "target": "ES2022",\n    "module": "esnext",\n    "jsx": "preserve",\n    "strict": true\n  }\n}` },
+   942→      { name: "README.md", type: "file", language: "markdown", content: `# ${projectName}\n\nThis project was created with CodeMentor AI.` },
+   943→    ],
+   944→  };
+   945→}
+   946→
+   947→function FileBrowser({
+   948→  framework,
+   949→  projectName,
+   950→}: {
+   951→  framework: string;
+   952→  projectName: string;
+   953→}) {
+   954→  const tree = React.useMemo(() => buildMockTree(projectName, framework), [projectName, framework]);
+   955→  const [selected, setSelected] = React.useState<FileNode | null>(null);
+   956→
+   957→  return (
+   958→    <Card className="py-0">
+   959→      <CardHeader className="border-b px-4 py-3">
+   960→        <CardTitle className="flex items-center gap-2 text-sm">
+   961→          <Files className="h-4 w-4 text-muted-foreground" />
+   962→          Files
+   963→          <Badge variant="outline" className="ml-1 h-5 text-[10px] text-muted-foreground">
+   964→            mock
+   965→          </Badge>
+   966→        </CardTitle>
+   967→      </CardHeader>
+   968→      <CardContent className="grid grid-cols-1 gap-0 p-0 sm:grid-cols-2">
+   969→        <div className="max-h-80 overflow-y-auto border-r border-border p-2">
+   970→          <FileTreeNode node={tree} depth={0} selected={selected} onSelect={setSelected} />
+   971→        </div>
+   972→        <div className="max-h-80 overflow-auto">
+   973→          {selected ? (
+   974→            <pre className="m-0 p-3 text-xs leading-relaxed">
+   975→              <code className="font-mono">{selected.content}</code>
+   976→            </pre>
+   977→          ) : (
+   978→            <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-2 p-4 text-center text-xs text-muted-foreground">
+   979→              <FileCode2 className="h-8 w-8 opacity-40" />
+   980→              Select a file to preview its contents.
+   981→            </div>
+   982→          )}
+   983→        </div>
+   984→      </CardContent>
+   985→    </Card>
+   986→  );
+   987→}
+   988→
+   989→function FileTreeNode({
+   990→  node,
+   991→  depth,
+   992→  selected,
+   993→  onSelect,
+   994→}: {
+   995→  node: FileNode;
+   996→  depth: number;
+   997→  selected: FileNode | null;
+   998→  onSelect: (n: FileNode) => void;
+   999→}) {
+  1000→  const [open, setOpen] = React.useState(depth < 2);
+  1001→  if (node.name === "root") {
+  1002→    return (
+  1003→      <div>
+  1004→        {node.children?.map((c) => (
+  1005→          <FileTreeNode
+  1006→            key={c.name}
+  1007→            node={c}
+  1008→            depth={depth}
+  1009→            selected={selected}
+  1010→            onSelect={onSelect}
+  1011→          />
+  1012→        ))}
+  1013→      </div>
+  1014→    );
+  1015→  }
+  1016→  if (node.type === "dir") {
+  1017→    return (
+  1018→      <div>
+  1019→        <button
+  1020→          onClick={() => setOpen((v) => !v)}
+  1021→          className="flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs hover:bg-accent"
+  1022→          style={{ paddingLeft: depth * 12 + 6 }}
+  1023→        >
+  1024→          <ChevronRight
+  1025→            className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+  1026→          />
+  1027→          {open ? (
+  1028→            <FolderOpen className="h-3.5 w-3.5 text-amber-500" />
+  1029→          ) : (
+  1030→            <Folder className="h-3.5 w-3.5 text-amber-500" />
+  1031→          )}
+  1032→          <span className="truncate font-medium">{node.name}</span>
+  1033→        </button>
+  1034→        {open && (
+  1035→          <div>
+  1036→            {node.children?.map((c) => (
+  1037→              <FileTreeNode
+  1038→                key={c.name}
+  1039→                node={c}
+  1040→                depth={depth + 1}
+  1041→                selected={selected}
+  1042→                onSelect={onSelect}
+  1043→              />
+  1044→            ))}
+  1045→          </div>
+  1046→        )}
+  1047→      </div>
+  1048→    );
+  1049→  }
+  1050→  return (
+  1051→    <button
+  1052→      onClick={() => onSelect(node)}
+  1053→      className={cn(
+  1054→        "flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs transition-colors hover:bg-accent",
+  1055→        selected?.name === node.name && "bg-accent"
+  1056→      )}
+  1057→      style={{ paddingLeft: depth * 12 + 22 }}
+  1058→    >
+  1059→      <FileCode2 className="h-3.5 w-3.5 text-sky-500" />
+  1060→      <span className="truncate font-mono">{node.name}</span>
+  1061→    </button>
+  1062→  );
+  1063→}
+  1064→
+  1065→// ---------------------------------------------------------------------------
+  1066→// Build log panel (collapsible)
+  1067→// ---------------------------------------------------------------------------
+  1068→
+  1069→function BuildLogPanel({
+  1070→  open,
+  1071→  onOpenChange,
+  1072→  build,
+  1073→  onTriggerBuild,
+  1074→  building,
+  1075→}: {
+  1076→  open: boolean;
+  1077→  onOpenChange: (v: boolean) => void;
+  1078→  build: BuildRun | null;
+  1079→  onTriggerBuild: () => void;
+  1080→  building: boolean;
+  1081→}) {
+  1082→  return (
+  1083→    <Card className="py-0">
+  1084→      <Collapsible open={open} onOpenChange={onOpenChange}>
+  1085→        <CollapsibleTrigger asChild>
+  1086→          <button className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left">
+  1087→            <div className="flex items-center gap-2">
+  1088→              <Terminal className="h-4 w-4 text-emerald-500" />
+  1089→              <span className="text-sm font-semibold">Build log</span>
+  1090→              {build && (
+  1091→                <Badge
+  1092→                  variant="outline"
+  1093→                  className={cn(
+  1094→                    "h-5 text-[10px]",
+  1095→                    build.status === "success" &&
+  1096→                      "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  1097→                    build.status === "failed" &&
+  1098→                      "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  1099→                    build.status === "running" &&
+  1100→                      "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400 animate-pulse"
+  1101→                  )}
+  1102→                >
+  1103→                  {build.status}
+  1104→                </Badge>
+  1105→              )}
+  1106→              {building && (
+  1107→                <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400">
+  1108→                  <Loader2 className="h-3 w-3 animate-spin" />
+  1109→                  building...
+  1110→                </span>
+  1111→              )}
+  1112→            </div>
+  1113→            <ChevronRight
+  1114→              className={cn("h-4 w-4 transition-transform", open && "rotate-90")}
+  1115→            />
+  1116→          </button>
+  1117→        </CollapsibleTrigger>
+  1118→        <CollapsibleContent>
+  1119→          <div className="bg-zinc-950 p-4">
+  1120→            {build ? (
+  1121→              <>
+  1122→                <pre className="m-0 max-h-80 overflow-y-auto font-mono text-xs leading-relaxed text-emerald-300">
+  1123→                  <code>{build.log}</code>
+  1124→                </pre>
+  1125→                <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-500">
+  1126→                  <span>
+  1127→                    {new Date(build.createdAt).toLocaleString()} ·{" "}
+  1128→                    {(build.duration / 1000).toFixed(2)}s
+  1129→                  </span>
+  1130→                  <Button
+  1131→                    size="sm"
+  1132→                    variant="outline"
+  1133→                    onClick={onTriggerBuild}
+  1134→                    disabled={building}
+  1135→                    className="h-7 border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+  1136→                  >
+  1137→                    {building ? (
+  1138→                      <Loader2 className="h-3 w-3 animate-spin" />
+  1139→                    ) : (
+  1140→                      <RefreshCw className="h-3 w-3" />
+  1141→                    )}
+  1142→                    Rebuild
+  1143→                  </Button>
+  1144→                </div>
+  1145→              </>
+  1146→            ) : (
+  1147→              <div className="flex h-32 flex-col items-center justify-center gap-2 text-center text-xs text-zinc-500">
+  1148→                <Terminal className="h-6 w-6 opacity-40" />
+  1149→                No build yet. Click <span className="text-emerald-400">Build Project</span> to start.
+  1150→              </div>
+  1151→            )}
+  1152→          </div>
+  1153→        </CollapsibleContent>
+  1154→      </Collapsible>
+  1155→    </Card>
+  1156→  );
+  1157→}
+  1158→
+  1159→// ---------------------------------------------------------------------------
+  1160→// Settings dialog
+  1161→// ---------------------------------------------------------------------------
+  1162→
+  1163→function SettingsDialog({
+  1164→  open,
+  1165→  onOpenChange,
+  1166→  project,
+  1167→  onSaved,
+  1168→  onDelete,
+  1169→  deleting,
+  1170→}: {
+  1171→  open: boolean;
+  1172→  onOpenChange: (v: boolean) => void;
+  1173→  project: ProjectDetail;
+  1174→  onSaved: (patch: Partial<ProjectDetail>) => void;
+  1175→  onDelete: () => void;
+  1176→  deleting: boolean;
+  1177→}) {
+  1178→  const [name, setName] = React.useState(project.name);
+  1179→  const [description, setDescription] = React.useState(project.description);
+  1180→  const [buildCommand, setBuildCommand] = React.useState(project.buildCommand);
+  1181→  const [outputDir, setOutputDir] = React.useState(project.outputDir);
+  1182→  const [envVars, setEnvVars] = React.useState(project.envVars);
+  1183→  const [saving, setSaving] = React.useState(false);
+  1184→
+  1185→  React.useEffect(() => {
+  1186→    if (open) {
+  1187→      setName(project.name);
+  1188→      setDescription(project.description);
+  1189→      setBuildCommand(project.buildCommand);
+  1190→      setOutputDir(project.outputDir);
+  1191→      setEnvVars(project.envVars);
+  1192→    }
+  1193→  }, [open, project]);
+  1194→
+  1195→  const save = async () => {
+  1196→    setSaving(true);
+  1197→    try {
+  1198→      const res = await fetch(`/api/projects/${project.id}`, {
+  1199→        method: "PATCH",
+  1200→        headers: { "Content-Type": "application/json" },
+  1201→        body: JSON.stringify({
+  1202→          name: name.trim() || project.name,
+  1203→          description,
+  1204→          buildCommand,
+  1205→          outputDir,
+  1206→          envVars,
+  1207→        }),
+  1208→      });
+  1209→      if (!res.ok) throw new Error("Failed to save");
+  1210→      onSaved({ name: name.trim() || project.name, description, buildCommand, outputDir, envVars });
+  1211→      toast.success("Settings saved");
+  1212→      onOpenChange(false);
+  1213→    } catch (err) {
+  1214→      toast.error("Save failed", { description: (err as Error).message });
+  1215→    } finally {
+  1216→      setSaving(false);
+  1217→    }
+  1218→  };
+  1219→
+  1220→  return (
+  1221→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1222→      <DialogContent className="sm:max-w-md">
+  1223→        <DialogHeader>
+  1224→          <DialogTitle>Project settings</DialogTitle>
+  1225→          <DialogDescription>
+  1226→            Update project metadata, build configuration, and environment variables.
+  1227→          </DialogDescription>
+  1228→        </DialogHeader>
+  1229→        <div className="flex flex-col gap-4 py-2">
+  1230→          <div className="flex flex-col gap-2">
+  1231→            <Label htmlFor="set-name">Name</Label>
+  1232→            <Input id="set-name" value={name} onChange={(e) => setName(e.target.value)} />
+  1233→          </div>
+  1234→          <div className="flex flex-col gap-2">
+  1235→            <Label htmlFor="set-desc">Description</Label>
+  1236→            <Textarea
+  1237→              id="set-desc"
+  1238→              value={description}
+  1239→              onChange={(e) => setDescription(e.target.value)}
+  1240→              rows={2}
+  1241→              className="min-h-[60px]"
+  1242→            />
+  1243→          </div>
+  1244→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+  1245→            <div className="flex flex-col gap-2">
+  1246→              <Label htmlFor="set-build">Build command</Label>
+  1247→              <Input
+  1248→                id="set-build"
+  1249→                value={buildCommand}
+  1250→                onChange={(e) => setBuildCommand(e.target.value)}
+  1251→              />
+  1252→            </div>
+  1253→            <div className="flex flex-col gap-2">
+  1254→              <Label htmlFor="set-out">Output directory</Label>
+  1255→              <Input
+  1256→                id="set-out"
+  1257→                value={outputDir}
+  1258→                onChange={(e) => setOutputDir(e.target.value)}
+  1259→              />
+  1260→            </div>
+  1261→          </div>
+  1262→          <div className="flex flex-col gap-2">
+  1263→            <Label htmlFor="set-env">Environment variables (keys only)</Label>
+  1264→            <Textarea
+  1265→              id="set-env"
+  1266→              placeholder={"NEXT_PUBLIC_API_URL\nDATABASE_URL\nSTRIPE_SECRET_KEY"}
+  1267→              value={envVars}
+  1268→              onChange={(e) => setEnvVars(e.target.value)}
+  1269→              rows={3}
+  1270→              className="min-h-[80px] font-mono text-xs"
+  1271→            />
+  1272→            <p className="text-[10px] text-muted-foreground">
+  1273→              One key per line. Values are stored separately (display only).
+  1274→            </p>
+  1275→          </div>
+  1276→        </div>
+  1277→        <DialogFooter className="flex-col gap-3 sm:flex-col sm:gap-3">
+  1278→          <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-between">
+  1279→            <Button
+  1280→              variant="ghost"
+  1281→              className="text-rose-600 hover:bg-rose-500/10 hover:text-rose-600"
+  1282→              onClick={onDelete}
+  1283→              disabled={deleting}
+  1284→            >
+  1285→              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
+  1286→              Delete project
+  1287→            </Button>
+  1288→            <div className="flex gap-2">
+  1289→              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+  1290→                Cancel
+  1291→              </Button>
+  1292→              <Button onClick={save} disabled={saving}>
+  1293→                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+  1294→                Save
+  1295→              </Button>
+  1296→            </div>
+  1297→          </div>
+  1298→        </DialogFooter>
+  1299→      </DialogContent>
+  1300→    </Dialog>
+  1301→  );
+  1302→}
+  1303→
+  1304→// ---------------------------------------------------------------------------
+  1305→// VS Code path dialog
+  1306→// ---------------------------------------------------------------------------
+  1307→
+  1308→function VscodePathDialog({
+  1309→  open,
+  1310→  onOpenChange,
+  1311→  project,
+  1312→  onSaved,
+  1313→}: {
+  1314→  open: boolean;
+  1315→  onOpenChange: (v: boolean) => void;
+  1316→  project: ProjectDetail;
+  1317→  onSaved: (localPath: string) => void;
+  1318→}) {
+  1319→  const [path, setPath] = React.useState(project.localPath || "");
+  1320→  const [saving, setSaving] = React.useState(false);
+  1321→
+  1322→  React.useEffect(() => {
+  1323→    if (open) setPath(project.localPath || "");
+  1324→  }, [open, project.localPath]);
+  1325→
+  1326→  const save = async () => {
+  1327→    if (!path.trim()) {
+  1328→      toast.error("Local path is required");
+  1329→      return;
+  1330→    }
+  1331→    setSaving(true);
+  1332→    try {
+  1333→      const res = await fetch(`/api/projects/${project.id}`, {
+  1334→        method: "PATCH",
+  1335→        headers: { "Content-Type": "application/json" },
+  1336→        body: JSON.stringify({ localPath: path.trim() }),
+  1337→      });
+  1338→      if (!res.ok) throw new Error("Failed to save path");
+  1339→      onSaved(path.trim());
+  1340→      toast.success("Local path saved", {
+  1341→        description: "You can now use Open in VS Code.",
+  1342→      });
+  1343→      onOpenChange(false);
+  1344→    } catch (err) {
+  1345→      toast.error("Save failed", { description: (err as Error).message });
+  1346→    } finally {
+  1347→      setSaving(false);
+  1348→    }
+  1349→  };
+  1350→
+  1351→  return (
+  1352→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1353→      <DialogContent className="sm:max-w-md">
+  1354→        <DialogHeader>
+  1355→          <DialogTitle className="flex items-center gap-2">
+  1356→            <FolderOpen className="h-4 w-4 text-blue-500" />
+  1357→            Local project path
+  1358→          </DialogTitle>
+  1359→          <DialogDescription>
+  1360→            Browsers can&apos;t directly access your local filesystem for security.
+  1361→            Provide your local project folder path so we can build a{" "}
+  1362→            <code className="rounded bg-muted px-1 py-0.5 text-[10px]">vscode://</code>{" "}
+  1363→            deep-link.
+  1364→          </DialogDescription>
+  1365→        </DialogHeader>
+  1366→        <div className="flex flex-col gap-3 py-2">
+  1367→          <Label htmlFor="path-input">Absolute path</Label>
+  1368→          <Input
+  1369→            id="path-input"
+  1370→            placeholder="/Users/you/projects/my-app"
+  1371→            value={path}
+  1372→            onChange={(e) => setPath(e.target.value)}
+  1373→            className="font-mono text-xs"
+  1374→            autoFocus
+  1375→            onKeyDown={(e) => {
+  1376→              if (e.key === "Enter" && !saving) save();
+  1377→            }}
+  1378→          />
+  1379→          <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-300">
+  1380→            <p className="mb-1 flex items-center gap-1 font-medium">
+  1381→              <Code className="h-3 w-3" />
+  1382→              How it works
+  1383→            </p>
+  1384→            <p>
+  1385→              Clicking <strong>Open in VS Code</strong> navigates to{" "}
+  1386→              <code className="font-mono">vscode://file/&lt;your-path&gt;</code>,
+  1387→              which launches VS Code with the correct folder open.
+  1388→            </p>
+  1389→          </div>
+  1390→        </div>
+  1391→        <DialogFooter>
+  1392→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+  1393→            Cancel
+  1394→          </Button>
+  1395→          <Button onClick={save} disabled={saving || !path.trim()}>
+  1396→            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+  1397→            Save &amp; open
+  1398→          </Button>
+  1399→        </DialogFooter>
+  1400→      </DialogContent>
+  1401→    </Dialog>
+  1402→  );
+  1403→}
+  1404→
+  1405→// ---------------------------------------------------------------------------
+  1406→// Commit dialog
+  1407→// ---------------------------------------------------------------------------
+  1408→
+  1409→function CommitDialog({
+  1410→  open,
+  1411→  onOpenChange,
+  1412→  project,
+  1413→  onCommitted,
+  1414→}: {
+  1415→  open: boolean;
+  1416→  onOpenChange: (v: boolean) => void;
+  1417→  project: ProjectDetail;
+  1418→  onCommitted: () => void;
+  1419→}) {
+  1420→  const [message, setMessage] = React.useState("");
+  1421→  const [committing, setCommitting] = React.useState(false);
+  1422→
+  1423→  React.useEffect(() => {
+  1424→    if (open) setMessage("");
+  1425→  }, [open]);
+  1426→
+  1427→  const commit = async () => {
+  1428→    if (!message.trim()) {
+  1429→      toast.error("Commit message is required");
+  1430→      return;
+  1431→    }
+  1432→    setCommitting(true);
+  1433→    try {
+  1434→      // Simulate commit + push.
+  1435→      await new Promise((r) => setTimeout(r, 1200));
+  1436→      onCommitted();
+  1437→      toast.success("Changes committed & pushed", {
+  1438→        description: `“${message.trim().slice(0, 60)}${message.length > 60 ? "..." : ""}”`,
+  1439→      });
+  1440→      onOpenChange(false);
+  1441→    } catch (err) {
+  1442→      toast.error("Commit failed", { description: (err as Error).message });
+  1443→    } finally {
+  1444→      setCommitting(false);
+  1445→    }
+  1446→  };
+  1447→
+  1448→  return (
+  1449→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1450→      <DialogContent className="sm:max-w-md">
+  1451→        <DialogHeader>
+  1452→          <DialogTitle className="flex items-center gap-2">
+  1453→            <GitCommit className="h-4 w-4 text-violet-500" />
+  1454→            Commit changes
+  1455→          </DialogTitle>
+  1456→          <DialogDescription>
+  1457→            {project.githubConnected
+  1458→              ? `Push to ${project.githubRepo || "GitHub"} on ${project.defaultBranch}.`
+  1459→              : "Connect GitHub first to push commits."}
+  1460→          </DialogDescription>
+  1461→        </DialogHeader>
+  1462→        <div className="flex flex-col gap-3 py-2">
+  1463→          <Label htmlFor="commit-msg">Commit message</Label>
+  1464→          <Textarea
+  1465→            id="commit-msg"
+  1466→            placeholder="feat: add user authentication flow"
+  1467→            value={message}
+  1468→            onChange={(e) => setMessage(e.target.value)}
+  1469→            rows={3}
+  1470→            className="min-h-[80px]"
+  1471→            autoFocus
+  1472→          />
+  1473→          <p className="text-[11px] text-muted-foreground">
+  1474→            Files staged: 3 modified, 1 added
+  1475→          </p>
+  1476→        </div>
+  1477→        <DialogFooter>
+  1478→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={committing}>
+  1479→            Cancel
+  1480→          </Button>
+  1481→          <Button
+  1482→            onClick={commit}
+  1483→            disabled={committing || !message.trim() || !project.githubConnected}
+  1484→          >
+  1485→            {committing ? (
+  1486→              <Loader2 className="h-4 w-4 animate-spin" />
+  1487→            ) : (
+  1488→              <GitCommit className="h-4 w-4" />
+  1489→            )}
+  1490→            Commit &amp; Push
+  1491→          </Button>
+  1492→        </DialogFooter>
+  1493→      </DialogContent>
+  1494→    </Dialog>
+  1495→  );
+  1496→}
+  1497→
+  1498→// ---------------------------------------------------------------------------
+  1499→// Connect dialog (shared for GitHub / Vercel / Neno)
+  1500→// ---------------------------------------------------------------------------
+  1501→
+  1502→type ConnectKind = "github" | "vercel" | "neno";
+  1503→
+  1504→function ConnectDialog({
+  1505→  kind,
+  1506→  open,
+  1507→  onOpenChange,
+  1508→  project,
+  1509→  onConnected,
+  1510→}: {
+  1511→  kind: ConnectKind;
+  1512→  open: boolean;
+  1513→  onOpenChange: (v: boolean) => void;
+  1514→  project: ProjectDetail;
+  1515→  onConnected: () => void;
+  1516→}) {
+  1517→  const [token, setToken] = React.useState("");
+  1518→  const [connecting, setConnecting] = React.useState(false);
+  1519→
+  1520→  React.useEffect(() => {
+  1521→    if (open) setToken("");
+  1522→  }, [open]);
+  1523→
+  1524→  const config = {
+  1525→    github: {
+  1526→      title: "Connect GitHub",
+  1527→      icon: Github,
+  1528→      color: "text-zinc-700 dark:text-zinc-300",
+  1529→      desc: "Authorize CodeMentor to access your GitHub repositories. We&apos;ll create a repo on first push.",
+  1530→      placeholder: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  1531→      tokenLabel: "Personal access token",
+  1532→      cta: "Connect GitHub",
+  1533→      note: "Required scopes: repo, workflow",
+  1534→    },
+  1535→    vercel: {
+  1536→      title: "Connect Vercel",
+  1537→      icon: Rocket,
+  1538→      color: "text-zinc-700 dark:text-zinc-300",
+  1539→      desc: "Link your Vercel account to deploy this project with one click.",
+  1540→      placeholder: "vercel_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  1541→      tokenLabel: "Vercel access token",
+  1542→      cta: "Connect Vercel",
+  1543→      note: "Create at vercel.com/account/tokens",
+  1544→    },
+  1545→    neno: {
+  1546→      title: "Connect Neno/Nano",
+  1547→      icon: Zap,
+  1548→      color: "text-amber-500",
+  1549→      desc: "Link your Neno/Nano environment for analytics and monitoring.",
+  1550→      placeholder: "nano_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  1551→      tokenLabel: "API key",
+  1552→      cta: "Connect Neno",
+  1553→      note: "Find your API key in the Neno dashboard",
+  1554→    },
+  1555→  }[kind];
+  1556→
+  1557→  const Icon = config.icon;
+  1558→  const alreadyConnected =
+  1559→    (kind === "github" && project.githubConnected) ||
+  1560→    (kind === "vercel" && project.vercelConnected) ||
+  1561→    (kind === "neno" && project.nenoConnected);
+  1562→
+  1563→  const connect = async () => {
+  1564→    if (!token.trim()) {
+  1565→      toast.error("Token is required");
+  1566→      return;
+  1567→    }
+  1568→    setConnecting(true);
+  1569→    try {
+  1570→      await new Promise((r) => setTimeout(r, 1200));
+  1571→      onConnected();
+  1572→      toast.success(config.title.replace("Connect ", "") + " connected");
+  1573→      onOpenChange(false);
+  1574→    } catch (err) {
+  1575→      toast.error("Connection failed", { description: (err as Error).message });
+  1576→    } finally {
+  1577→      setConnecting(false);
+  1578→    }
+  1579→  };
+  1580→
+  1581→  return (
+  1582→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1583→      <DialogContent className="sm:max-w-md">
+  1584→        <DialogHeader>
+  1585→          <DialogTitle className="flex items-center gap-2">
+  1586→            <Icon className={cn("h-4 w-4", config.color)} />
+  1587→            {config.title}
+  1588→          </DialogTitle>
+  1589→          <DialogDescription>{config.desc}</DialogDescription>
+  1590→        </DialogHeader>
+  1591→        {alreadyConnected ? (
+  1592→          <div className="flex flex-col items-center gap-3 py-6 text-center">
+  1593→            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+  1594→              <CheckCircle2 className="h-6 w-6" />
+  1595→            </div>
+  1596→            <div>
+  1597→              <p className="text-sm font-medium">Already connected</p>
+  1598→              <p className="text-xs text-muted-foreground">
+  1599→                {kind === "github" && project.githubRepo}
+  1600→                {kind === "vercel" && project.vercelProjectName}
+  1601→                {kind === "neno" && project.nenoEnvironment}
+  1602→              </p>
+  1603→            </div>
+  1604→            <Button variant="outline" onClick={() => onOpenChange(false)}>
+  1605→              Close
+  1606→            </Button>
+  1607→          </div>
+  1608→        ) : (
+  1609→          <>
+  1610→            <div className="flex flex-col gap-3 py-2">
+  1611→              <Label htmlFor="connect-token">{config.tokenLabel}</Label>
+  1612→              <Input
+  1613→                id="connect-token"
+  1614→                placeholder={config.placeholder}
+  1615→                value={token}
+  1616→                onChange={(e) => setToken(e.target.value)}
+  1617→                type="password"
+  1618→                className="font-mono text-xs"
+  1619→                autoFocus
+  1620→              />
+  1621→              <p className="text-[10px] text-muted-foreground">{config.note}</p>
+  1622→            </div>
+  1623→            <DialogFooter>
+  1624→              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={connecting}>
+  1625→                Cancel
+  1626→              </Button>
+  1627→              <Button onClick={connect} disabled={connecting || !token.trim()}>
+  1628→                {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+  1629→                {config.cta}
+  1630→              </Button>
+  1631→            </DialogFooter>
+  1632→          </>
+  1633→        )}
+  1634→      </DialogContent>
+  1635→    </Dialog>
+  1636→  );
+  1637→}
+  1638→
+  1639→// ---------------------------------------------------------------------------
+  1640→// Build log dialog (history)
+  1641→// ---------------------------------------------------------------------------
+  1642→
+  1643→function BuildLogDialog({
+  1644→  open,
+  1645→  onOpenChange,
+  1646→  builds,
+  1647→  onTriggerBuild,
+  1648→  building,
+  1649→}: {
+  1650→  open: boolean;
+  1651→  onOpenChange: (v: boolean) => void;
+  1652→  builds: BuildRun[];
+  1653→  onTriggerBuild: () => void;
+  1654→  building: boolean;
+  1655→}) {
+  1656→  const [active, setActive] = React.useState<string | null>(builds[0]?.id ?? null);
+  1657→  React.useEffect(() => {
+  1658→    if (open && !active && builds[0]) setActive(builds[0].id);
+  1659→  }, [open, active, builds]);
+  1660→  const current = builds.find((b) => b.id === active) || builds[0];
+  1661→
+  1662→  return (
+  1663→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1664→      <DialogContent className="sm:max-w-2xl">
+  1665→        <DialogHeader>
+  1666→          <DialogTitle className="flex items-center gap-2">
+  1667→            <Terminal className="h-4 w-4 text-emerald-500" />
+  1668→            Build history
+  1669→          </DialogTitle>
+  1670→          <DialogDescription>
+  1671→            {builds.length} build{builds.length === 1 ? "" : "s"} recorded.
+  1672→          </DialogDescription>
+  1673→        </DialogHeader>
+  1674→        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[200px_1fr]">
+  1675→          {/* Build list */}
+  1676→          <div className="max-h-80 overflow-y-auto rounded-md border border-border p-1">
+  1677→            {builds.length === 0 ? (
+  1678→              <p className="p-3 text-xs text-muted-foreground">No builds yet.</p>
+  1679→            ) : (
+  1680→              builds.map((b) => (
+  1681→                <button
+  1682→                  key={b.id}
+  1683→                  onClick={() => setActive(b.id)}
+  1684→                  className={cn(
+  1685→                    "flex w-full flex-col items-start gap-1 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent",
+  1686→                    current?.id === b.id && "bg-accent"
+  1687→                  )}
+  1688→                >
+  1689→                  <div className="flex w-full items-center justify-between">
+  1690→                    <span className="text-xs font-medium">
+  1691→                      {new Date(b.createdAt).toLocaleString()}
+  1692→                    </span>
+  1693→                    <Badge
+  1694→                      variant="outline"
+  1695→                      className={cn(
+  1696→                        "h-4 text-[9px]",
+  1697→                        b.status === "success" &&
+  1698→                          "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  1699→                        b.status === "failed" &&
+  1700→                          "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  1701→                        b.status === "running" &&
+  1702→                          "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+  1703→                      )}
+  1704→                    >
+  1705→                      {b.status}
+  1706→                    </Badge>
+  1707→                  </div>
+  1708→                  <span className="text-[10px] text-muted-foreground">
+  1709→                    {(b.duration / 1000).toFixed(2)}s
+  1710→                  </span>
+  1711→                </button>
+  1712→              ))
+  1713→            )}
+  1714→          </div>
+  1715→          {/* Log content */}
+  1716→          <div className="max-h-80 overflow-auto rounded-md bg-zinc-950 p-3">
+  1717→            {current ? (
+  1718→              <pre className="m-0 font-mono text-xs leading-relaxed text-emerald-300">
+  1719→                <code>{current.log}</code>
+  1720→              </pre>
+  1721→            ) : (
+  1722→              <p className="p-4 text-xs text-zinc-500">No build selected.</p>
+  1723→            )}
+  1724→          </div>
+  1725→        </div>
+  1726→        <DialogFooter>
+  1727→          <Button variant="outline" onClick={() => onOpenChange(false)}>
+  1728→            Close
+  1729→          </Button>
+  1730→          <Button onClick={onTriggerBuild} disabled={building}>
+  1731→            {building ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hammer className="h-4 w-4" />}
+  1732→            Trigger new build
+  1733→          </Button>
+  1734→        </DialogFooter>
+  1735→      </DialogContent>
+  1736→    </Dialog>
+  1737→  );
+  1738→}
+  1739→
+  1740→// ---------------------------------------------------------------------------
+  1741→// Deployment status dialog
+  1742→// ---------------------------------------------------------------------------
+  1743→
+  1744→function DeployStatusDialog({
+  1745→  open,
+  1746→  onOpenChange,
+  1747→  project,
+  1748→  onRedeploy,
+  1749→  deploying,
+  1750→}: {
+  1751→  open: boolean;
+  1752→  onOpenChange: (v: boolean) => void;
+  1753→  project: ProjectDetail;
+  1754→  onRedeploy: () => void;
+  1755→  deploying: boolean;
+  1756→}) {
+  1757→  const live = project.status === "live" && project.lastDeployUrl;
+  1758→  return (
+  1759→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1760→      <DialogContent className="sm:max-w-md">
+  1761→        <DialogHeader>
+  1762→          <DialogTitle className="flex items-center gap-2">
+  1763→            <Globe className="h-4 w-4 text-emerald-500" />
+  1764→            Deployment status
+  1765→          </DialogTitle>
+  1766→          <DialogDescription>
+  1767→            {live
+  1768→              ? "Your project is live on Vercel."
+  1769→              : "This project hasn't been deployed yet."}
+  1770→          </DialogDescription>
+  1771→        </DialogHeader>
+  1772→        <div className="flex flex-col gap-3 py-2">
+  1773→          <div className="flex items-center justify-between rounded-md border border-border p-3">
+  1774→            <div className="flex items-center gap-2">
+  1775→              <span
+  1776→                className={cn(
+  1777→                  "flex h-2 w-2 rounded-full",
+  1778→                  live ? "animate-pulse bg-emerald-500" : "bg-muted-foreground"
+  1779→                )}
+  1780→              />
+  1781→              <span className="text-sm font-medium">
+  1782→                {live ? "Live" : "Not deployed"}
+  1783→              </span>
+  1784→            </div>
+  1785→            {project.lastBuildAt && (
+  1786→              <span className="text-xs text-muted-foreground">
+  1787→                Last build: {formatRelative(project.lastBuildAt)}
+  1788→              </span>
+  1789→            )}
+  1790→          </div>
+  1791→          {project.lastDeployUrl && (
+  1792→            <div className="flex flex-col gap-2">
+  1793→              <Label>URL</Label>
+  1794→              <div className="flex items-center gap-2">
+  1795→                <Input
+  1796→                  readOnly
+  1797→                  value={project.lastDeployUrl}
+  1798→                  className="font-mono text-xs"
+  1799→                />
+  1800→                <Button
+  1801→                  variant="outline"
+  1802→                  size="icon"
+  1803→                  onClick={() => {
+  1804→                    if (project.lastDeployUrl) {
+  1805→                      window.open(project.lastDeployUrl, "_blank", "noopener,noreferrer");
+  1806→                    }
+  1807→                  }}
+  1808→                >
+  1809→                  <ExternalLink className="h-3.5 w-3.5" />
+  1810→                </Button>
+  1811→              </div>
+  1812→            </div>
+  1813→          )}
+  1814→          {project.vercelProjectName && (
+  1815→            <div className="flex flex-col gap-1">
+  1816→              <Label className="text-xs">Vercel project</Label>
+  1817→              <p className="font-mono text-xs text-muted-foreground">
+  1818→                {project.vercelProjectName}
+  1819→              </p>
+  1820→            </div>
+  1821→          )}
+  1822→        </div>
+  1823→        <DialogFooter>
+  1824→          <Button variant="outline" onClick={() => onOpenChange(false)}>
+  1825→            Close
+  1826→          </Button>
+  1827→          <Button
+  1828→            onClick={onRedeploy}
+  1829→            disabled={deploying || !project.vercelConnected}
+  1830→          >
+  1831→            {deploying ? (
+  1832→              <Loader2 className="h-4 w-4 animate-spin" />
+  1833→            ) : (
+  1834→              <Rocket className="h-4 w-4" />
+  1835→            )}
+  1836→            {project.lastDeployUrl ? "Re-deploy" : "Deploy now"}
+  1837→          </Button>
+  1838→        </DialogFooter>
+  1839→      </DialogContent>
+  1840→    </Dialog>
+  1841→  );
+  1842→}
+  1843→
